@@ -11,16 +11,27 @@ const COLS: readonly Column[] = [
         label: "Changelog",
         href: "https://github.com/drdtrn/StackSift/releases",
       },
-      { label: "Status", href: "https://status.stacksift.io" },
     ],
   },
   {
     title: "Docs",
     links: [
-      { label: "Quickstart", href: "https://docs.stacksift.io/quickstart" },
-      { label: "Agent", href: "https://docs.stacksift.io/agent" },
-      { label: "SDK", href: "https://docs.stacksift.io/sdk" },
-      { label: "API reference", href: "https://app.stacksift.io/swagger" },
+      {
+        label: "Quickstart",
+        href: "https://github.com/drdtrn/StackSift/tree/main/docs/integrate",
+      },
+      {
+        label: "Serilog sink (.NET)",
+        href: "https://github.com/drdtrn/StackSift/tree/main/src/backend/StackSift.Serilog.Sink",
+      },
+      {
+        label: "Winston transport (Node)",
+        href: "https://github.com/drdtrn/StackSift/tree/main/sdks/winston-transport",
+      },
+      {
+        label: "API reference",
+        href: "https://github.com/drdtrn/StackSift/blob/main/docs/integrate/api-reference.md",
+      },
     ],
   },
   {
