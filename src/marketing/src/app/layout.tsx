@@ -67,6 +67,8 @@ const themeScript = `
 })();
 `;
 
+const analyticsEnabled = process.env.NEXT_PUBLIC_ANALYTICS_ENABLED === "true";
+
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html
@@ -82,6 +84,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           domain="stacksift.io"
           customDomain="https://plausible.stacksift.io"
           selfHosted
+          enabled={analyticsEnabled}
           trackOutboundLinks
           taggedEvents
         >
