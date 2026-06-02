@@ -10,7 +10,8 @@ public static class EntityMappingExtensions
 
     internal static LogSourceDto ToDto(this LogSource ls) =>
         new(ls.Id, ls.ProjectId, ls.OrganizationId, ls.Name, ls.Type,
-            ls.IngestUrl, ls.ApiKey, ls.IsActive, ls.LastSeenAt, ls.CreatedAt);
+            ls.IngestUrl, ls.KeyPrefix, ls.KeyLastUsedAt, ls.KeyRotatedAt,
+            ls.IsActive, ls.LastSeenAt, ls.CreatedAt);
 
     public static LogEntryDto ToDto(this LogEntry le) =>
         new(le.Id, le.ProjectId, le.LogSourceId, le.OrganizationId, le.Level,
@@ -35,4 +36,15 @@ public static class EntityMappingExtensions
         new(a.Id, a.IncidentId, projectId, a.OrganizationId, a.Status, a.Summary, a.RootCause,
             a.SuggestedFixes ?? [], a.RelevantLogIds ?? [], a.ConfidenceScore,
             a.CreatedAt, a.CompletedAt);
+
+    public static MemberDto ToMemberDto(this User u, string? invitedByDisplayName = null) =>
+        new(u.Id, u.Email, u.DisplayName, u.Role,
+            u.InvitedByUserId, invitedByDisplayName, u.CreatedAt, u.LastLoginAt);
+
+    public static InvitationDto ToDto(this Invitation i) =>
+        new(i.Id, i.OrganizationId, i.Email, i.Role,
+            i.InvitedByUserId, i.ExpiresAt, i.CreatedAt);
+
+    public static OrganizationDto ToDto(this Organization o) =>
+        new(o.Id, o.Name, o.Slug, o.LogoUrl, o.Plan, o.CreatedAt, o.UpdatedAt);
 }

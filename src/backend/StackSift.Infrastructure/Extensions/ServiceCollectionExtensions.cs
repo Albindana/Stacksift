@@ -10,23 +10,32 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using OpenAI;
 using StackExchange.Redis;
+using StackSift.Application.Commands.Billing;
 using StackSift.Application.Interfaces;
 using StackSift.Application.Messages;
 using StackSift.Domain.Interfaces;
 using StackSift.Domain.Interfaces.Repositories;
+using StackSift.Infrastructure.Abuse;
 using StackSift.Infrastructure.Ai;
 using StackSift.Infrastructure.Ai.Abstractions;
+using StackSift.Infrastructure.Audit;
+using StackSift.Infrastructure.Captcha;
+using StackSift.Infrastructure.Billing;
 using StackSift.Infrastructure.Caching;
 using StackSift.Infrastructure.Elasticsearch;
+using StackSift.Infrastructure.Elasticsearch.LifecycleBootstrap;
 using StackSift.Infrastructure.Email;
 using StackSift.Infrastructure.Messaging;
 using StackSift.Infrastructure.Messaging.Consumers;
 using StackSift.Infrastructure.Persistence;
+using StackSift.Infrastructure.Persistence.Interceptors;
 using StackSift.Infrastructure.Persistence.Repositories;
 using StackSift.Infrastructure.Services;
 using StackSift.Infrastructure.SignalR;
 using StackSift.Infrastructure.Configuration;
+using StackSift.Infrastructure.Identity;
 using StackSift.Infrastructure.Jobs;
+using StackSift.Application.Interfaces;
 using StackSift.Infrastructure.Storage;
 
 namespace StackSift.Infrastructure.Extensions;
@@ -37,19 +46,55 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services, IConfiguration configuration)
     {
         // ── EF Core / PostgreSQL ───────────────────────────────────────────
-        services.AddDbContext<AppDbContext>(options =>
-            options.UseNpgsql(
-                configuration.GetConnectionString("DefaultConnection"),
-                b => b.UseVector()));
+        services.AddScoped<TenantConnectionInterceptor>();
+        services.AddDbContext<AppDbContext>((sp, options) =>
+            options
+                .UseNpgsql(
+                    configuration.GetConnectionString("DefaultConnection"),
+                    b => b.UseVector())
+                .AddInterceptors(sp.GetRequiredService<TenantConnectionInterceptor>()));
 
         // ── Elasticsearch ─────────────────────────────────────────────────
         var esUri = configuration["Elasticsearch:Uri"] ?? "http://localhost:9200";
         var esSettings = new ElasticsearchClientSettings(new Uri(esUri));
         services.AddSingleton(new ElasticsearchClient(esSettings));
 
+        services.AddHttpClient(EsLifecycleBootstrap.HttpClientName, client =>
+        {
+            client.BaseAddress = new Uri(esUri);
+            client.Timeout = TimeSpan.FromSeconds(30);
+        });
+        services.AddHostedService<EsLifecycleBootstrap>();
+
         // ── Current-user service ──────────────────────────────────────────
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUserService, HttpContextCurrentUserService>();
+        services.AddScoped<ICurrentOrgProvider, HttpContextCurrentOrgProvider>();
+
+        // ── Log source API keys ──────────────────────────────────────────
+        services.AddOptions<LogSourceOptions>()
+            .Bind(configuration.GetSection("LogSources"))
+            .Validate(options =>
+            {
+                try
+                {
+                    return Convert.FromBase64String(options.KeyPepperBase64).Length >= 32;
+                }
+                catch (FormatException)
+                {
+                    return false;
+                }
+            }, "LogSources:KeyPepperBase64 must be valid base64 and decode to at least 32 bytes.")
+            .ValidateOnStart();
+        services.AddSingleton<IApiKeyHasher, HmacApiKeyHasher>();
+        services.AddScoped<IAuditLog, PostgresAuditLog>();
+
+        // ── Abuse protection (Plan 08 §13) ────────────────────────────────
+        services.Configure<CaptchaOptions>(configuration.GetSection("Captcha"));
+        services.AddHttpClient<ICaptchaVerifier, TurnstileVerifier>();
+        services.AddSingleton<DisposableEmailBlocklist>();
+        services.AddSingleton<IDisposableEmailBlocklist>(sp => sp.GetRequiredService<DisposableEmailBlocklist>());
+        services.AddTransient<RefreshDisposableDomainsJob>();
 
         // ── Repositories ─────────────────────────────────────────────────
         services.AddScoped<IOrganizationRepository, OrganizationRepository>();
@@ -60,6 +105,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IIncidentRepository, IncidentRepository>();
         services.AddScoped<IAiAnalysisRepository, AiAnalysisRepository>();
         services.AddScoped<IUserRepository, UserRepository>();
+        services.AddScoped<IInvitationRepository, InvitationRepository>();
         services.AddScoped<ILogEntryRepository, ElasticsearchLogEntryRepository>();
 
         // ── Unit of Work ─────────────────────────────────────────────────
@@ -72,6 +118,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ICacheService, RedisCacheService>();
 
         services.AddScoped<IAlertHubService, AlertHubService>();
+
+        // ── Keycloak admin client (service-account → admin REST API) ──────
+        services.Configure<KeycloakAdminOptions>(configuration.GetSection("Keycloak:Admin"));
+        services.AddHttpClient<IKeycloakAdminClient, KeycloakAdminClient>();
 
         // ── App options (frontend base URL for emails) ────────────────────
         services.Configure<AppOptions>(configuration.GetSection("App"));
@@ -87,12 +137,14 @@ public static class ServiceCollectionExtensions
         services.AddTransient<DigestEmailJob>();
         services.AddTransient<LogRetentionJob>();
         services.AddTransient<ImmediateAlertEmailJob>();
+        services.AddTransient<StripeReconciliationJob>();
 
         // ── Email (MailKit + Polly) ────────────────────────────────────────
         var smtpSettings = configuration.GetSection("Smtp").Get<SmtpSettings>() ?? new SmtpSettings();
         services.AddSingleton(smtpSettings);
         services.AddTransient<ISmtpClient, SmtpClient>();
         services.AddScoped<IEmailService, MailKitEmailService>();
+        services.AddSingleton<IMemberEmailComposer, MemberEmailComposer>();
 
         // ── MassTransit / RabbitMQ ────────────────────────────────────────
         var rabbitHost = configuration["RabbitMq:Host"] ?? "localhost";
@@ -104,6 +156,7 @@ public static class ServiceCollectionExtensions
         {
             bus.AddConsumer<LogBatchConsumer>();
             bus.AddConsumer<AlertFiredConsumer>();
+            bus.AddConsumer<OrgPlanChangedConsumer>();
 
             bus.UsingRabbitMq((ctx, cfg) =>
             {
@@ -119,6 +172,9 @@ public static class ServiceCollectionExtensions
 
                 cfg.Message<AlertFiredMessage>(m => m.SetEntityName("alert-fired"));
                 cfg.Publish<AlertFiredMessage>(p => p.ExchangeType = "fanout");
+
+                cfg.Message<OrgPlanChangedMessage>(m => m.SetEntityName("org-plan-changed"));
+                cfg.Publish<OrgPlanChangedMessage>(p => p.ExchangeType = "fanout");
 
                 // email-dead-letter exchange: published by MailKitEmailService after retry exhaustion
                 // No consumer — messages accumulate for manual inspection and replay
@@ -163,6 +219,22 @@ public static class ServiceCollectionExtensions
 
                     e.Consumer<AlertFiredConsumer>(ctx);
                 });
+
+                // org-plan-changed-queue: applies the per-tier ILM policy to
+                // the org's stacksift-logs-{orgId} index when the plan changes.
+                cfg.ReceiveEndpoint("org-plan-changed-queue", e =>
+                {
+                    e.Bind("org-plan-changed", b => b.ExchangeType = "fanout");
+                    e.ConfigureConsumeTopology = false;
+
+                    e.UseMessageRetry(r =>
+                        r.Intervals(
+                            TimeSpan.FromSeconds(5),
+                            TimeSpan.FromSeconds(15),
+                            TimeSpan.FromSeconds(30)));
+
+                    e.Consumer<OrgPlanChangedConsumer>(ctx);
+                });
             });
         });
 
@@ -199,6 +271,26 @@ public static class ServiceCollectionExtensions
         };
         services.AddSingleton<IAmazonS3>(new AmazonS3Client(s3Opts.AccessKey, s3Opts.SecretKey, s3Config));
         services.AddScoped<IFileStorageService, S3FileStorageService>();
+        services.AddScoped<IAccountExportStorage, S3AccountExportStorage>();
+        services.AddScoped<IAccountExportContext, AccountExportContext>();
+        services.AddScoped<IAccountExportJobRunner, AccountExportJobRunner>();
+        services.AddScoped<IAccountExportEnqueuer, HangfireAccountExportEnqueuer>();
+        services.AddScoped<IAccountErasureContext, AccountErasureContext>();
+        services.AddScoped<IAccountErasureService, AccountErasureService>();
+        services.AddScoped<IAccountErasureJobRunner, AccountErasureJob>();
+        services.AddSingleton<IErasureCancellationTokenHasher, HmacErasureCancellationTokenHasher>();
+        services.AddSingleton(TimeProvider.System);
+
+        // ── Stripe billing ────────────────────────────────────────────────
+        services.Configure<StripeOptions>(configuration.GetSection("Stripe"));
+        services.AddSingleton<IStripeService, StripeService>();
+        services.AddScoped<IStripeWebhookStore, StripeWebhookStore>();
+        services.Configure<BillingPriceMap>(map =>
+        {
+            var stripeOpts = configuration.GetSection("Stripe").Get<StripeOptions>() ?? new StripeOptions();
+            map.Indie = stripeOpts.Prices.Indie;
+            map.Team = stripeOpts.Prices.Team;
+        });
 
         return services;
     }

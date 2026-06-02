@@ -4,23 +4,16 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import type { AxiosError } from 'axios';
 import { useToastStore } from '@/app/hooks/useToastStore';
-import { useApiError } from '@/app/hooks/useApiError';
-import { apiClient } from '@/app/lib/api-client';
 import { queryKeys } from '@/app/lib/query-keys';
 import type { AlertRuleFormInput } from '@/app/lib/schemas/alert-rule';
 import type { AlertRule, AlertRuleCondition, LogLevel } from '@/app/types';
+import { apiClient } from '@/app/lib/api-client';
+import { AlertRuleSchema } from '@/app/lib/api-schemas';
+import { useApiError } from '@/app/hooks/useApiError';
 
-// ---------------------------------------------------------------------------
-// CreateAlertRulePayload
-//
-// What the backend at POST /api/v1/alert-rules actually expects.
-// The form uses rich discriminated-union condition types (ErrorRate, LogVolume,
-// PatternMatch, Latency). This payload maps them to the domain's flat fields.
-// ---------------------------------------------------------------------------
-
-interface CreateAlertRulePayload {
-  name: string;
+interface AlertRuleBody {
   projectId: string;
+  name: string;
   condition: AlertRuleCondition;
   threshold: number | null;
   windowMinutes: number;
@@ -28,28 +21,48 @@ interface CreateAlertRulePayload {
   pattern: string | null;
 }
 
-function mapFormToPayload(input: AlertRuleFormInput): CreateAlertRulePayload {
-  const { name, projectId, condition } = input;
-
-  switch (condition.type) {
-    case 'ErrorRate':
-      return { name, projectId, condition: 'threshold', threshold: condition.threshold, windowMinutes: condition.windowMinutes, logLevel: null, pattern: null };
-    case 'LogVolume':
-      return { name, projectId, condition: 'threshold', threshold: condition.threshold, windowMinutes: condition.windowMinutes, logLevel: null, pattern: null };
-    case 'PatternMatch':
-      return { name, projectId, condition: 'pattern', threshold: null, windowMinutes: 60, logLevel: condition.logLevel ?? null, pattern: condition.pattern };
-    case 'Latency':
-      return { name, projectId, condition: 'threshold', threshold: condition.thresholdMs, windowMinutes: 0, logLevel: null, pattern: null };
-  }
+interface UpdateAlertRuleInput extends AlertRuleBody {
+  id: string;
+  isActive: boolean;
 }
 
-// ---------------------------------------------------------------------------
-// useCreateAlertRule
-//
-// POST /api/v1/alert-rules  (NOT the deleted /api/alert-rules local handler)
-//
-// On success: invalidates alertRules cache, shows toast, redirects to /alerts.
-// ---------------------------------------------------------------------------
+function mapAlertRuleFormToBackend(input: AlertRuleFormInput): AlertRuleBody {
+  const base = {
+    projectId: input.projectId,
+    name: input.name,
+  };
+
+  switch (input.condition.type) {
+    case 'ErrorRate':
+    case 'LogVolume':
+      return {
+        ...base,
+        condition: 'threshold',
+        threshold: input.condition.threshold,
+        windowMinutes: input.condition.windowMinutes,
+        logLevel: null,
+        pattern: null,
+      };
+    case 'PatternMatch':
+      return {
+        ...base,
+        condition: 'pattern',
+        threshold: null,
+        windowMinutes: 1,
+        logLevel: input.condition.logLevel ?? null,
+        pattern: input.condition.pattern,
+      };
+    case 'Latency':
+      return {
+        ...base,
+        condition: 'threshold',
+        threshold: input.condition.thresholdMs,
+        windowMinutes: 5,
+        logLevel: null,
+        pattern: null,
+      };
+  }
+}
 
 export function useCreateAlertRule() {
   const queryClient = useQueryClient();
@@ -59,8 +72,11 @@ export function useCreateAlertRule() {
 
   const mutation = useMutation<AlertRule, AxiosError, AlertRuleFormInput>({
     mutationFn: async (input) => {
-      const payload = mapFormToPayload(input);
-      const response = await apiClient.post<AlertRule>('/api/v1/alert-rules', payload);
+      const response = await apiClient.post<AlertRule>(
+        '/api/v1/alert-rules',
+        mapAlertRuleFormToBackend(input),
+        { schema: AlertRuleSchema },
+      );
       return response.data;
     },
 
@@ -75,9 +91,7 @@ export function useCreateAlertRule() {
       router.push('/alerts');
     },
 
-    onError: (err) => {
-      handleApiError(err);
-    },
+    onError: handleApiError,
   });
 
   return {
@@ -86,4 +100,44 @@ export function useCreateAlertRule() {
     isError: mutation.isError,
     error: mutation.error,
   };
+}
+
+export function useUpdateAlertRule() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  const handleApiError = useApiError();
+
+  return useMutation<AlertRule, AxiosError, UpdateAlertRuleInput>({
+    mutationFn: async ({ id, ...body }) => {
+      const response = await apiClient.put<AlertRule>(
+        `/api/v1/alert-rules/${id}`,
+        body,
+        { schema: AlertRuleSchema },
+      );
+      return response.data;
+    },
+    onSuccess: async (rule) => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.alertRules.all });
+      queryClient.setQueryData(queryKeys.alertRules.detail(rule.id), rule);
+      addToast({ variant: 'success', message: `Alert rule "${rule.name}" updated.` });
+    },
+    onError: handleApiError,
+  });
+}
+
+export function useDeleteAlertRule() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  const handleApiError = useApiError();
+
+  return useMutation<void, AxiosError, { id: string; name: string }>({
+    mutationFn: async ({ id }) => {
+      await apiClient.delete(`/api/v1/alert-rules/${id}`);
+    },
+    onSuccess: async (_data, { name }) => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.alertRules.all });
+      addToast({ variant: 'success', message: `Alert rule "${name}" deleted.` });
+    },
+    onError: handleApiError,
+  });
 }

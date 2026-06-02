@@ -5,8 +5,16 @@ using StackSift.Domain.Interfaces;
 
 namespace StackSift.Infrastructure.Persistence;
 
-public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUserService currentUser) : DbContext(options)
+public class AppDbContext(
+    DbContextOptions<AppDbContext> options,
+    ICurrentUserService currentUser,
+    ICurrentOrgProvider orgProvider) : DbContext(options)
 {
+    // Referenced by the tenant query filters below. EF re-reads these from the
+    // context instance per query, so EnterSystemScope toggles take effect live.
+    private Guid CurrentOrgId => orgProvider.OrgId;
+    private bool TenantFilterEnabled => orgProvider.TenantFilterEnabled;
+
     public DbSet<Organization> Organizations => Set<Organization>();
     public DbSet<User> Users => Set<User>();
     public DbSet<Project> Projects => Set<Project>();
@@ -16,11 +24,35 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUserSe
     public DbSet<Alert> Alerts => Set<Alert>();
     public DbSet<Incident> Incidents => Set<Incident>();
     public DbSet<AiAnalysis> AiAnalyses => Set<AiAnalysis>();
+    public DbSet<StripeWebhookEvent> StripeWebhookEvents => Set<StripeWebhookEvent>();
+    public DbSet<Invitation> Invitations => Set<Invitation>();
+    public DbSet<AuditLogEntry> AuditLogEntries => Set<AuditLogEntry>();
+    public DbSet<AccountExportRequest> AccountExportRequests => Set<AccountExportRequest>();
+    public DbSet<AccountErasureRequest> AccountErasureRequests => Set<AccountErasureRequest>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasPostgresExtension("vector");
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
+
+        // Tenant query filter (the ORM-level fail-safe). Combines the soft-delete
+        // filter with org-scoping that is active only inside an HTTP request; in
+        // background workers TenantFilterEnabled is false so these reduce to the
+        // soft-delete filter and cross-org maintenance keeps working.
+        modelBuilder.Entity<Project>()
+            .HasQueryFilter(e => !e.IsDeleted && (!TenantFilterEnabled || e.OrganizationId == CurrentOrgId));
+        modelBuilder.Entity<LogSource>()
+            .HasQueryFilter(e => !e.IsDeleted && (!TenantFilterEnabled || e.OrganizationId == CurrentOrgId));
+        modelBuilder.Entity<AlertRule>()
+            .HasQueryFilter(e => !e.IsDeleted && (!TenantFilterEnabled || e.OrganizationId == CurrentOrgId));
+        modelBuilder.Entity<Alert>()
+            .HasQueryFilter(e => !e.IsDeleted && (!TenantFilterEnabled || e.OrganizationId == CurrentOrgId));
+        modelBuilder.Entity<Incident>()
+            .HasQueryFilter(e => !e.IsDeleted && (!TenantFilterEnabled || e.OrganizationId == CurrentOrgId));
+        modelBuilder.Entity<AiAnalysis>()
+            .HasQueryFilter(e => !e.IsDeleted && (!TenantFilterEnabled || e.OrganizationId == CurrentOrgId));
+        modelBuilder.Entity<LogEntry>()
+            .HasQueryFilter(e => !e.IsDeleted && (!TenantFilterEnabled || e.OrganizationId == CurrentOrgId));
 
         base.OnModelCreating(modelBuilder);
     }

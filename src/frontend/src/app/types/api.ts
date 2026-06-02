@@ -57,10 +57,26 @@ export interface ApiError {
 export interface LogQueryFilters {
   projectId?: string;
   level?: import('./domain').LogLevel;
+  /** Multi-select: serialised as repeated `level` query params. */
+  levels?: import('./domain').LogLevel[];
   search?: string;
   startDate?: string;
   endDate?: string;
   logSourceId?: string;
+}
+
+export interface IncidentFilters {
+  projectId?: string;
+  status?: import('./domain').IncidentStatus;
+  page?: number;
+  pageSize?: number;
+}
+
+/** Returned by GET /api/v1/incidents/{id}/similar */
+export interface SimilarIncident {
+  incident: import('./domain').Incident;
+  /** Cosine similarity converted to 0-1 range (1 = identical). */
+  score: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -76,6 +92,8 @@ export {
   OrganizationSchema,
   ProjectSchema,
   LogSourceSchema,
+  LogSourceCreatedSchema,
+  TestIngestResultSchema,
   LogEntrySchema,
   AlertRuleSchema,
   AlertSchema,
@@ -83,5 +101,5 @@ export {
   AiAnalysisSchema,
   UserSchema,
   DashboardStatsSchema,
+  SimilarIncidentSchema,
 } from '@/app/lib/api-schemas';
-

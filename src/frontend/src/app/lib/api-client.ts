@@ -114,6 +114,12 @@ export const apiClient = axios.create({
     Accept: 'application/json',
   },
   timeout: 30_000,
+  // ASP.NET Core binds repeated keys (`levels=Error&levels=Warning`), not
+  // bracket-suffixed ones (`levels[]=Error`). Override Axios's default
+  // bracket serialiser to match the backend.
+  paramsSerializer: {
+    indexes: null,
+  },
 });
 
 // ---------------------------------------------------------------------------
@@ -195,6 +201,20 @@ apiClient.interceptors.response.use(
       if (typeof window !== 'undefined') {
         window.location.href = '/login';
       }
+      return Promise.reject(error);
+    }
+
+    // -----------------------------------------------------------------------
+    // 402 — plan limit reached; surface upgrade nudge
+    // -----------------------------------------------------------------------
+    if (status === 402) {
+      const detail = data?.detail ?? data?.title ?? 'Plan limit reached.';
+      useToastStore.getState().addToast({
+        variant: 'warning',
+        message: detail,
+        duration: 10_000,
+        action: { label: 'Upgrade your plan', href: '/settings/billing' },
+      });
       return Promise.reject(error);
     }
 

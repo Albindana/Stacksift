@@ -112,6 +112,25 @@ export function getSessionUser(request: NextRequest): User | null {
   return extractUserFromToken(session.accessToken);
 }
 
+// Same as getSessionUser, but reads the cookie from `next/headers.cookies()`
+// for use in server components / layouts (no NextRequest available there).
+// Imported lazily so client-side bundles don't pull in next/headers.
+export async function getServerSessionUser(): Promise<User | null> {
+  const { cookies } = await import('next/headers');
+  const store = await cookies();
+  const raw = store.get(authConfig.cookies.session)?.value;
+  if (!raw) return null;
+
+  try {
+    const decoded = decodeURIComponent(raw);
+    const session = JSON.parse(decoded) as SessionData;
+    if (!session.accessToken) return null;
+    return extractUserFromToken(session.accessToken);
+  } catch {
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // isSessionExpired
 //
@@ -135,22 +154,6 @@ export function redirectWithClearedSession(url: string): NextResponse {
   const response = NextResponse.redirect(url);
   response.headers.set('Set-Cookie', clearSessionCookie());
   return response;
-}
-
-// ---------------------------------------------------------------------------
-// replaceSessionCookie
-//
-// Builds a new session cookie by regenerating mock tokens for an updated
-// user object. Called after organisation creation to inject organization_id
-// into the session without requiring a full re-login.
-//
-// This only applies in mock mode. In production, Keycloak would issue a
-// fresh token with the org claim via a silent refresh or re-auth.
-// ---------------------------------------------------------------------------
-
-export function replaceSessionCookie(updatedUser: User): string {
-  const tokens = generateMockTokensForUser(updatedUser);
-  return createSessionCookie(tokens);
 }
 
 // ---------------------------------------------------------------------------

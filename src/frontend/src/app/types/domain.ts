@@ -25,6 +25,7 @@ export interface Organization {
   name: string;
   slug: string;
   logoUrl: string | null;
+  plan: 'free' | 'indie' | 'team';
   createdAt: string;
   updatedAt: string;
 }
@@ -45,13 +46,26 @@ export interface Project {
 export interface LogSource {
   id: string;
   projectId: string;
+  organizationId: string;
   name: string;
   type: LogSourceType;
   ingestUrl: string;
-  apiKey: string;
+  keyPrefix: string;
+  keyLastUsedAt: string | null;
+  keyRotatedAt: string | null;
   isActive: boolean;
   lastSeenAt: string | null;
   createdAt: string;
+}
+
+export interface LogSourceCreated {
+  logSource: LogSource;
+  apiKey: string;
+}
+
+export interface TestIngestResult {
+  syntheticId: string;
+  sentAt: string;
 }
 
 export interface LogEntry {
@@ -71,6 +85,7 @@ export interface LogEntry {
 export interface AlertRule {
   id: string;
   projectId: string;
+  organizationId: string;
   name: string;
   condition: AlertRuleCondition;
   threshold: number | null;
@@ -78,6 +93,7 @@ export interface AlertRule {
   logLevel: LogLevel | null;
   pattern: string | null;
   isActive: boolean;
+  severity: AlertSeverity;
   createdAt: string;
   updatedAt: string;
 }
@@ -98,6 +114,7 @@ export interface Alert {
 export interface Incident {
   id: string;
   projectId: string;
+  organizationId: string;
   status: IncidentStatus;
   title: string;
   description: string | null;
@@ -107,7 +124,6 @@ export interface Incident {
   resolvedAt: string | null;
   closedAt: string | null;
   assigneeId: string | null;
-  alertIds: string[];
   aiAnalysisId: string | null;
 }
 
@@ -135,4 +151,37 @@ export interface User {
   organizationId: string | null;
   createdAt: string;
   lastLoginAt: string | null;
+}
+
+export interface Member {
+  id: string;
+  email: string;
+  displayName: string;
+  role: UserRole;
+  invitedByUserId: string | null;
+  invitedByDisplayName: string | null;
+  createdAt: string;
+  lastLoginAt: string | null;
+}
+
+export interface Invitation {
+  id: string;
+  organizationId: string;
+  email: string;
+  role: UserRole;
+  invitedByUserId: string;
+  expiresAt: string;
+  createdAt: string;
+}
+
+export interface AddOrInviteMemberResult {
+  member: Member | null;
+  invitation: Invitation | null;
+}
+
+export interface AcceptInvitationResult {
+  userId: string;
+  email: string;
+  organizationId: string;
+  role: UserRole;
 }

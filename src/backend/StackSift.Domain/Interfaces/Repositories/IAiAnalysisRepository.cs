@@ -1,4 +1,5 @@
 using StackSift.Domain.Entities;
+using StackSift.Domain.ValueObjects;
 
 namespace StackSift.Domain.Interfaces.Repositories;
 
@@ -10,4 +11,12 @@ public interface IAiAnalysisRepository : IRepository<AiAnalysis, Guid>
         int topK,
         Guid? excludeId = null,
         CancellationToken ct = default);
+
+    Task<IReadOnlyList<AiAnalysisSimilarity>> SearchSimilarWithDistanceAsync(
+        float[] embedding,
+        int topK,
+        Guid? excludeId = null,
+        CancellationToken ct = default);
+
+    Task<int> GetCountByOrgSinceAsync(Guid organizationId, DateTimeOffset since, CancellationToken ct = default);
 }

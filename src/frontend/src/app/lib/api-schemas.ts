@@ -24,6 +24,7 @@ export const OrganizationSchema = z.object({
   name: z.string().min(1),
   slug: z.string().min(1),
   logoUrl: z.string().url().nullable(),
+  plan: z.enum(['free', 'indie', 'team']),
   createdAt: z.string().datetime({ offset: true }),
   updatedAt: z.string().datetime({ offset: true }),
 });
@@ -44,13 +45,26 @@ export const ProjectSchema = z.object({
 export const LogSourceSchema = z.object({
   id: z.string().uuid(),
   projectId: z.string().uuid(),
+  organizationId: z.string().uuid(),
   name: z.string().min(1),
   type: LogSourceTypeSchema,
-  ingestUrl: z.string().url(),
-  apiKey: z.string(),
+  ingestUrl: z.string().min(1),
+  keyPrefix: z.string().min(1),
+  keyLastUsedAt: z.string().datetime({ offset: true }).nullable(),
+  keyRotatedAt: z.string().datetime({ offset: true }).nullable(),
   isActive: z.boolean(),
   lastSeenAt: z.string().datetime({ offset: true }).nullable(),
   createdAt: z.string().datetime({ offset: true }),
+});
+
+export const LogSourceCreatedSchema = z.object({
+  logSource: LogSourceSchema,
+  apiKey: z.string().min(1),
+});
+
+export const TestIngestResultSchema = z.object({
+  syntheticId: z.string().uuid(),
+  sentAt: z.string().datetime({ offset: true }),
 });
 
 export const LogEntrySchema = z.object({
@@ -70,6 +84,7 @@ export const LogEntrySchema = z.object({
 export const AlertRuleSchema = z.object({
   id: z.string().uuid(),
   projectId: z.string().uuid(),
+  organizationId: z.string().uuid(),
   name: z.string().min(1),
   condition: AlertRuleConditionSchema,
   threshold: z.number().nullable(),
@@ -77,6 +92,7 @@ export const AlertRuleSchema = z.object({
   logLevel: LogLevelSchema.nullable(),
   pattern: z.string().nullable(),
   isActive: z.boolean(),
+  severity: AlertSeveritySchema,
   createdAt: z.string().datetime({ offset: true }),
   updatedAt: z.string().datetime({ offset: true }),
 });
@@ -97,6 +113,7 @@ export const AlertSchema = z.object({
 export const IncidentSchema = z.object({
   id: z.string().uuid(),
   projectId: z.string().uuid(),
+  organizationId: z.string().uuid(),
   status: IncidentStatusSchema,
   title: z.string(),
   description: z.string().nullable(),
@@ -106,7 +123,6 @@ export const IncidentSchema = z.object({
   resolvedAt: z.string().datetime({ offset: true }).nullable(),
   closedAt: z.string().datetime({ offset: true }).nullable(),
   assigneeId: z.string().uuid().nullable(),
-  alertIds: z.array(z.string().uuid()),
   aiAnalysisId: z.string().uuid().nullable(),
 });
 
@@ -135,11 +151,47 @@ export const UserSchema = z.object({
   lastLoginAt: z.string().datetime({ offset: true }).nullable(),
 });
 
-// Dashboard stats — aggregated metrics returned by GET /api/dashboard
+// Members management (NUF-5).
+export const MemberSchema = z.object({
+  id: z.string().uuid(),
+  email: z.string().email(),
+  displayName: z.string().min(1),
+  role: UserRoleSchema,
+  invitedByUserId: z.string().uuid().nullable(),
+  invitedByDisplayName: z.string().nullable(),
+  createdAt: z.string().datetime({ offset: true }),
+  lastLoginAt: z.string().datetime({ offset: true }).nullable(),
+});
+
+export const InvitationSchema = z.object({
+  id: z.string().uuid(),
+  organizationId: z.string().uuid(),
+  email: z.string().email(),
+  role: UserRoleSchema,
+  invitedByUserId: z.string().uuid(),
+  expiresAt: z.string().datetime({ offset: true }),
+  createdAt: z.string().datetime({ offset: true }),
+});
+
+export const AddOrInviteMemberResultSchema = z.object({
+  member: MemberSchema.nullable(),
+  invitation: InvitationSchema.nullable(),
+});
+
+export const AcceptInvitationResultSchema = z.object({
+  userId: z.string().uuid(),
+  email: z.string().email(),
+  organizationId: z.string().uuid(),
+  role: UserRoleSchema,
+});
+
+// Dashboard stats — aggregated metrics returned by GET /api/v1/dashboard.
+// Field names mirror DashboardStatsDto on the backend (camelCase via
+// JsonSerializerDefaults.Web).
 export const DashboardStatsSchema = z.object({
-  activeAlerts: z.number().int().nonnegative(),
-  totalLogs: z.number().int().nonnegative(),
-  openIncidents: z.number().int().nonnegative(),
+  activeAlertCount: z.number().int().nonnegative(),
+  totalLogsToday: z.number().int().nonnegative(),
+  openIncidentCount: z.number().int().nonnegative(),
 });
 
 // ---------------------------------------------------------------------------
@@ -186,6 +238,13 @@ export const ApiErrorSchema = z.object({
   errors: z.record(z.array(z.string())).nullable().optional(),
 });
 
+// Similar incident — returned by GET /api/v1/incidents/{id}/similar
+// score: cosine similarity (0-1); UI converts to percentage.
+export const SimilarIncidentSchema = z.object({
+  incident: IncidentSchema,
+  score: z.number().min(0).max(1),
+});
+
 // ---------------------------------------------------------------------------
 // Inferred TypeScript types (use these instead of duplicating in types/)
 // ---------------------------------------------------------------------------
@@ -193,6 +252,8 @@ export const ApiErrorSchema = z.object({
 export type OrganizationFromSchema = z.infer<typeof OrganizationSchema>;
 export type ProjectFromSchema = z.infer<typeof ProjectSchema>;
 export type LogSourceFromSchema = z.infer<typeof LogSourceSchema>;
+export type LogSourceCreatedFromSchema = z.infer<typeof LogSourceCreatedSchema>;
+export type TestIngestResultFromSchema = z.infer<typeof TestIngestResultSchema>;
 export type LogEntryFromSchema = z.infer<typeof LogEntrySchema>;
 export type AlertRuleFromSchema = z.infer<typeof AlertRuleSchema>;
 export type AlertFromSchema = z.infer<typeof AlertSchema>;
@@ -201,3 +262,4 @@ export type AiAnalysisFromSchema = z.infer<typeof AiAnalysisSchema>;
 export type UserFromSchema = z.infer<typeof UserSchema>;
 export type DashboardStatsFromSchema = z.infer<typeof DashboardStatsSchema>;
 export type ApiErrorFromSchema = z.infer<typeof ApiErrorSchema>;
+export type SimilarIncidentFromSchema = z.infer<typeof SimilarIncidentSchema>;

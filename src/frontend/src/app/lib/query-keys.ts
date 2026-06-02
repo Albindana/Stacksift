@@ -1,4 +1,4 @@
-import type { LogQueryFilters } from '@/app/types';
+import type { LogQueryFilters, IncidentFilters } from '@/app/types';
 
 // ---------------------------------------------------------------------------
 // Query Key Factory
@@ -13,6 +13,11 @@ import type { LogQueryFilters } from '@/app/types';
 // ---------------------------------------------------------------------------
 
 export const queryKeys = {
+  organizations: {
+    all: ['organizations'] as const,
+    current: () => [...queryKeys.organizations.all, 'current'] as const,
+  },
+
   projects: {
     all: ['projects'] as const,
     lists: () => [...queryKeys.projects.all, 'list'] as const,
@@ -33,10 +38,11 @@ export const queryKeys = {
   incidents: {
     all: ['incidents'] as const,
     lists: () => [...queryKeys.incidents.all, 'list'] as const,
-    list: (projectId?: string) =>
-      [...queryKeys.incidents.lists(), { projectId }] as const,
+    list: (filters?: IncidentFilters) =>
+      [...queryKeys.incidents.lists(), { filters }] as const,
     details: () => [...queryKeys.incidents.all, 'detail'] as const,
     detail: (id: string) => [...queryKeys.incidents.details(), id] as const,
+    similar: (id: string) => [...queryKeys.incidents.details(), id, 'similar'] as const,
   },
 
   alerts: {
@@ -48,18 +54,47 @@ export const queryKeys = {
     detail: (id: string) => [...queryKeys.alerts.details(), id] as const,
   },
 
-  logSources: {
-    all: ['logSources'] as const,
-    byProject: (projectId: string) =>
-      [...queryKeys.logSources.all, 'project', projectId] as const,
-  },
-
   alertRules: {
     all: ['alertRules'] as const,
     lists: () => [...queryKeys.alertRules.all, 'list'] as const,
-    list: (projectId?: string) =>
-      [...queryKeys.alertRules.lists(), { projectId }] as const,
+    list: (projectId: string) => [...queryKeys.alertRules.lists(), { projectId }] as const,
     details: () => [...queryKeys.alertRules.all, 'detail'] as const,
     detail: (id: string) => [...queryKeys.alertRules.details(), id] as const,
+  },
+
+  logSources: {
+    all: ['logSources'] as const,
+    lists: () => [...queryKeys.logSources.all, 'list'] as const,
+    organization: () => [...queryKeys.logSources.lists(), 'organization'] as const,
+    byProject: (projectId: string) =>
+      [...queryKeys.logSources.lists(), 'project', projectId] as const,
+    details: () => [...queryKeys.logSources.all, 'detail'] as const,
+    detail: (id: string) => [...queryKeys.logSources.details(), id] as const,
+  },
+
+  dashboard: {
+    all: ['dashboard'] as const,
+    stats: () => [...queryKeys.dashboard.all, 'stats'] as const,
+  },
+
+  aiAnalyses: {
+    all: ['ai-analyses'] as const,
+    details: () => [...queryKeys.aiAnalyses.all, 'detail'] as const,
+    detail: (id: string) => [...queryKeys.aiAnalyses.details(), id] as const,
+  },
+
+  members: {
+    all: ['members'] as const,
+    byOrg: (orgId: string) => [...queryKeys.members.all, orgId] as const,
+  },
+
+  billing: {
+    all: ['billing'] as const,
+    subscription: () => [...queryKeys.billing.all, 'subscription'] as const,
+  },
+
+  account: {
+    all: ['account'] as const,
+    exportRequests: () => [...queryKeys.account.all, 'export-requests'] as const,
   },
 } as const;

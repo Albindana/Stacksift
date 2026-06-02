@@ -109,30 +109,101 @@ StackSift/
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Docker & Docker Compose
-- .NET 10 SDK
-- Node.js 20+ & pnpm 9+
+- Docker & Docker Compose v2.20+ (`required` env-file syntax)
 
-### 1. Start the infrastructure
+That's it. The full stack — Postgres, Elasticsearch, Redis, RabbitMQ, Keycloak, MinIO, Mailpit, Prometheus, Loki, Grafana, Uptime-Kuma, the .NET API, the dashboard, and the marketing site — runs in one command.
+
+### 1. Configure local secrets
+
+```bash
+cp .env.example .env.local
+# edit .env.local and replace every CHANGE_ME (Stripe + OpenAI + Keycloak admin secret)
+```
+
+`.env.local` is gitignored. The placeholders work out of the box for everything *except* Stripe (no billing flows) and OpenAI (no AI analyses). The Keycloak admin client secret is needed for the BFF's user-management calls; supply a value once you've imported the realm.
+
+### 2. Bring up the full stack
+
 ```bash
 cd infrastructure/docker
-docker compose up -d
+# Apply schema migrations once (runs to completion, then exits):
+docker compose --profile migrate run --rm migrate
+# Start everything else:
+docker compose up -d --wait
 ```
 
-### 2. Run the backend
+The API container no longer runs migrations on start — multi-replica deploys race when each pod calls `MigrateAsync()`. The `migrate` service is opt-in via the `migrate` profile; re-run it before each `docker compose up` after pulling a new commit that touched `Persistence/Migrations/`. (Plan 09 §9.1.)
+
+`--wait` blocks until every service reports healthy (~30 s warm, ~90 s cold). Then:
+
+| Service       | URL                            |
+|---------------|--------------------------------|
+| Dashboard     | http://localhost:3000          |
+| Marketing     | http://localhost:3200          |
+| API           | http://localhost:5190          |
+| Swagger       | http://localhost:5190/swagger  |
+| Keycloak      | http://localhost:8080          |
+| Mailpit (UI)  | http://localhost:8025          |
+| Grafana       | http://localhost:3001          |
+| RabbitMQ (UI) | http://localhost:15672         |
+
+### 3. Hot-reload mode
+
+`infrastructure/docker/docker-compose.override.yml` is auto-merged when you run `docker compose up` from the `infrastructure/docker/` directory. It bind-mounts the source tree and runs `dotnet watch run` + `pnpm dev`:
+
 ```bash
-cd src/backend
-dotnet run --project StackSift.Api          # http://localhost:5190
+cd infrastructure/docker
+docker compose up -d              # auto-includes the override
+docker compose logs -f api        # watch recompiles
 ```
 
-### 3. Run the frontend
+To run the production-style stack (image-based, no source mounts — what CI does):
+
 ```bash
-cd src/frontend
-pnpm install
-pnpm dev                                    # http://localhost:3000
+docker compose -f docker-compose.yml up -d --build
 ```
 
-> **Offline development:** set `NEXT_PUBLIC_AUTH_MOCK=true` in `src/frontend/.env.local` to bypass Keycloak. Set `NEXT_PUBLIC_SIGNALR_MOCK=true` to use an in-memory fake hub.
+### 4. Postgres backup smoke (local)
+
+```bash
+cd infrastructure/docker
+docker compose --profile pgbackrest-init run --rm pgbackrest-init
+# Inspect:
+docker compose exec postgres pgbackrest --stanza=stacksift info
+```
+
+The init profile creates the stanza in the MinIO repo, runs `pgbackrest check`, then takes the first full backup. Continuous WAL archiving runs automatically once the stanza exists (see `infrastructure/docker/postgres/postgresql.overrides.conf`).
+
+### 5. Stripe billing in dev
+
+```bash
+stripe listen --forward-to http://localhost:5190/api/v1/billing/webhook
+# copy the printed webhook secret into .env.local → Stripe__WebhookSecret
+docker compose restart api
+```
+
+> **Offline development without Docker:** set `NEXT_PUBLIC_AUTH_MOCK=true` in `src/frontend/.env.local` to bypass Keycloak and `NEXT_PUBLIC_SIGNALR_MOCK=true` to use an in-memory fake hub. The host-mode commands below still work if you prefer to skip Docker.
+
+### Host-mode fallback (no Docker)
+
+If you'd rather run only the dependencies in Docker and the apps on the host:
+
+```bash
+# Dependencies only:
+docker compose -f infrastructure/docker/docker-compose.yml \
+  up -d postgres redis rabbitmq elasticsearch keycloak minio mailpit
+
+# Backend:
+cd src/backend && dotnet run --project StackSift.Api    # :5190
+
+# Frontend (separate terminal):
+cd src/frontend && pnpm install && pnpm dev             # :3000
+
+# Marketing (separate terminal):
+cd src/marketing && pnpm dev                            # :3200
+```
+
+See `docs/payments.md` for the full operator runbook (rotating the webhook secret, adding plans, replaying stuck events).
 
 ### Services (local)
 | Service | URL |

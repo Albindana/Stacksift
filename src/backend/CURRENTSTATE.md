@@ -1,19 +1,25 @@
 # Backend — Current State
 
-> **Last updated:** 2026-05-09
-> **Sprint:** Sprint 3 — implementing the entire backend from scratch
-> **Health:** Domain + Application layers complete. Infrastructure has EF Core, ES, Redis, repos, UoW, MassTransit/RabbitMQ pipeline. API layer has controllers, auth, Swagger.
+> **Last updated:** 2026-05-31 (Docker end-to-end integration)
+> **Sprint:** Post-Sprint-3 — feature surface complete; Plans 04–08 (payments, data-lifecycle/GDPR, observability, realm-as-code, security) landed; now Docker-native.
+> **Health:** All four layers fully built out. Backend test suite on real Testcontainers (Postgres pgvector:pg16 + Keycloak) — last reported 209/209 green at CORE-FUNC, since extended by billing/GDPR/security work. The whole stack now boots and works **composed in Docker Compose** (see §"Docker integration" below).
 
 ---
 
 ## Layer Structure
 
 ```
-StackSift.Domain/          → ✅ Complete — entities, enums, interfaces, exceptions, value objects
-StackSift.Application/     → ✅ Complete — DTOs, 11 commands, 9 queries, validators, ValidationBehavior, DI extension
-StackSift.Infrastructure/  → Class1.cs stub only — EMPTY
-StackSift.Api/             → Program.cs (weather forecast template) — EMPTY
+StackSift.Domain/          → ✅ Complete — 14 entities, 12 enums, value objects, exceptions, repo/service interfaces, PlanLimits, ICurrentOrgProvider
+StackSift.Application/     → ✅ Complete — DTOs, ~35 commands + ~24 queries across 13 feature areas, validators, ValidationBehavior, ~18 infra-facing interfaces
+StackSift.Infrastructure/  → ✅ Complete — EF Core+pgvector (RLS+interceptors+13 migrations), ES (ILM), Redis, MassTransit/RabbitMQ, OpenAI RAG, Hangfire, MailKit, Stripe, Keycloak admin, MinIO/S3, audit, captcha, abuse
+StackSift.Api/             → ✅ Complete — 16 controllers, 5 middleware, 4 auth policies, 6 rate-limit policies, CORS, security headers, SignalR host, 6 health checks, Serilog+OTel+Prometheus
+StackSift.MigrationRunner/ → ✅ Standalone migrator (separate container / k8s Job)
+StackSift.Serilog.Sink/    → ✅ Published-style .NET log-shipping sink (NuGet v0.1.0)
 ```
+
+> ⚠️ The card table and notes below were authored through CORE-FUNC (2026-05-25). Since then, work
+> from Plans 04–08 has landed (see "Work since Sprint 3"). The card statuses below remain accurate
+> for what they cover but are not a complete index of the backend.
 
 Clean Architecture dependency rule (strictly enforced, no exceptions):
 ```
@@ -43,11 +49,46 @@ Api → Infrastructure → Application → Domain
 | BE-15 | File upload (MinIO, .log/.txt/.yaml, 50MB limit) | ✅ Done — IFileStorageService + FileUploadResult (Domain), S3FileStorageService + S3StorageOptions (Infrastructure), UploadLogFileCommand + FileUploadDto (Application), FilesController.Upload streaming (201 + Location), FileUpload rate limit 20/min per org, MinIO + minio-init in docker-compose, AWSSDK.S3 3.7.* |
 | BE-16 | SQL optimization + EXPLAIN ANALYZE (3 queries documented) | ✅ Done — performance indexes on Projects/Incidents/LogEntries, N+1 eliminated on projects list query (subquery aggregation), EXPLAIN ANALYZE for 3 queries in docs/sql-optimization.md |
 | BE-17 | Backend test suite (xUnit + Testcontainers + Moq) | ✅ Done — InMemory removed; 3 DB-touching unit tests migrated to PostgresContainerFixture (pgvector:pg16 + Respawn); WebApplicationFactory + Testcontainers Keycloak; KeycloakTestRealmSeeder seeds realm+client+mappers+2 users; KeycloakTokenClient caches real JWTs; AuthIntegrationTests (401/200/403/404/health), ProjectsControllerTests (full CRUD + duplicate-slug 409), IncidentsControllerTests (status filter, transitions, cross-tenant 404); docs/test-coverage.md; SlugExistsInOrgAsync added to fix 409 conflict; invalid transition guard added for 400 |
+| FS-MT | Multi-tenancy verification | ✅ Done — systematic cross-org 404 tests for all 8 controllers (Projects, LogSources, AlertRules, Alerts, Incidents, AiAnalyses, Files, LogEntries ingest); orgId-in-body ignored tests for Projects + AlertRules; Logs read isolation verified by code audit (ES not in testcontainers); Files key-prefix guard verified by code audit; docs/multi-tenancy-verification.md |
 | BE-18 | AI Log Entry #3 | 🔲 Not started |
 | BE-19 | Structured logging (Serilog → Loki → Grafana + correlation IDs) | ✅ Done — Serilog.Sinks.Grafana.Loki 8.*, loki container 2.9.0, Grafana datasource auto-provisioned, docs/loki-setup.md, parallel sink (console preserved) |
 | BE-20 | .cursorrules for .NET (AI-assisted Swagger enrichment) | ✅ Done — `/.cursorrules` rewritten (12 sections, ~204 lines, project-specific .NET rules), 4 request-body records documented, `UploadLogFileForm` record introduced (fixes Swashbuckle multipart blocker so `swagger.json` generates), 9 controllers enriched with `<remarks>` + `<response>` blocks, 7 controllers converted to primary constructors, `BaseApiController`/`HealthController`/3 middleware classes/`ApiErrorResponse` documented, CS1591 unsuppressed in `StackSift.Api.csproj`, `docs/swagger-enrichment.md` (95 lines, honest reflection on AI hallucination + Swashbuckle blocker), `docs/ai-log.md` row appended |
+| NUF-1 | Keycloak admin client + service account | ✅ Done — `stacksift-backend-admin` confidential client added to realm JSON (service accounts enabled, `manage-users`/`view-users`/`query-users` from `realm-management`), `directAccessGrantsEnabled` flipped on `stacksift-frontend` for ROPC, `IKeycloakAdminClient` interface in Application layer (`CreateUserAsync`/`SetUserAttributesAsync`/`DeleteUserAsync`/`FindUserByEmailAsync`), `KeycloakAdminClient` implementation in Infrastructure (`SemaphoreSlim`-coalesced service-account token cache, GET-mutate-PUT for SetAttributes, 409 → ConflictException, 404 → NotFoundException, `TimeProvider` injected for unit tests), `services.AddHttpClient<IKeycloakAdminClient, KeycloakAdminClient>()` wiring, new `Keycloak:Admin` section in `appsettings.json`, 12 unit tests + 5 integration tests (Testcontainers Keycloak, full create → ROPC-login → JWT-claims round-trip) — 127/127 suite green |
+| NUF-2 | Backend registration endpoint | ✅ Done — new `Invitation` domain entity + `IInvitationRepository` (`FindPendingByEmailAsync`/`FindByTokenAsync`, no org-scoping by design); `User.InvitedByUserId` self-FK; single migration `AddInvitationsAndInvitedBy` (partial unique index on `Email WHERE AcceptedAt IS NULL AND IsDeleted=false`); `RegisterUserCommand` + handler — invitation wins over the form's `isOwner` flag, DB-failure compensation deletes the orphaned Keycloak user with `CancellationToken.None` so it survives caller cancellation; `RegisterUserCommandValidator` (email/12-char password with upper+lower+digit/display name); anonymous `AuthController.Register` at `POST /api/v1/auth/register` with `[EnableRateLimiting("Register")]` (5 / IP / 10 min, fixed-window); 20 unit tests + 4 integration tests (Testcontainers — covers happy path, duplicate→409, invitation auto-attach, rate-limit 429) — 151/151 suite green |
+| NUF-5 | Members management for owners | ✅ Done — `IUserRepository.FindByEmailAsync` + `CountOwnersAsync`; `IInvitationRepository.ListPendingByOrgAsync`; `TokenGenerator.UrlSafe(24)` for invitation tokens; **5 new commands** (`AddOrInviteMember` unified attach-or-invite flow, `UpdateMemberRole`, `RemoveMember`, `AcceptInvitation`) all sharing the DB→Keycloak write-source pattern with rollback on KC failure; **shared last-owner guard** in Update + Remove (cannot demote/remove the last owner); `GetMembersQuery` returns the team with inviter-displayName join; `MembersController` at `/api/v1/organizations/{orgId}/members` — `ViewerOrAbove` for List, `OwnerOnly` for the three mutations (201 attached / 202 invited / 409 last-owner / 404 cross-tenant); `AuthController.AcceptInvitation` at `POST /api/v1/auth/accept-invitation` (anonymous, rate-limited under the shared Register envelope); new `IMemberEmailComposer` (Application interface) + `MemberEmailComposer` impl (Infrastructure) with two new embedded HTML templates (`MemberAdded.html`, `Invitation.html`); 23 unit tests + 10 integration tests (Testcontainers — covers list-policy, owner-only enforcement, cross-tenant 404, last-owner 409, AddOrInvite both paths, the negative `/unassigned` route check) — **184/184 backend suite green** |
+| ORG-1 | Real organisation-creation endpoint | ✅ Done — replaces the FS-era mock BFF that minted unsigned JWTs. New `OrganizationDto` + mapping; `IOrganizationRepository.SlugExistsAsync` (pre-check for clean 409) + `HardDeleteAsync` (raw `ExecuteDeleteAsync` so compensation releases the unique-slug index slot); `CreateOrganizationCommand` handler — claim+row check that the caller has no org, slug derived from name (matches the validator regex), force-promotion to Owner, insert + `SetUserAttributesAsync` with full rollback (DB row + hard-delete org) on Keycloak failure; `OrganizationsController` at `POST /api/v1/organizations` — `[Authorize]` without a role policy (the no-org check is the gate); 11 unit tests + 5 integration tests (ownerless user seeded in `KeycloakTestRealmSeeder.OwnerlessEmail`); **200/200 backend suite green**. Also includes a NUF-1 realm-import fix prerequisite (service-account user UUID was 42 chars and crashed import; client `fullScopeAllowed: false` dropped role claims from the access token). |
+| CORE-FUNC | Fix `/waiting` stuck-bug + enforce `PlanLimits.MaxUsers` | ✅ Done — **Fix 1:** `POST /api/auth/refresh` BFF route (frontend) always calls Keycloak `refresh_token` grant and rotates the session cookie; wired into `/waiting` poll loop before `invalidateBearerCache()` + `qc.invalidateQueries(['auth','me'])` so stale `organization_id` claims are updated within one poll tick. **Fix 2:** `IUserRepository.CountActiveMembersAsync` + `IInvitationRepository.CountPendingByOrgAsync` new count primitives; `EnforceUserCapAsync` gating in `AddOrInviteMemberCommandHandler` (skip on refresh-existing-invite path), `AcceptInvitationCommandHandler`, `RegisterUserCommandHandler` (invitation-attach branch only); 402 `PlanLimitExceededException` mapping added to `ExceptionHandlingMiddleware`; 4 new unit tests on `AddOrInviteMember`, 2 on `AcceptInvitation`, 2 on `RegisterUser`, 1 integration on `MembersController`; **209/209 backend suite green**. |
 
 **M3 deadline: Friday, May 8, 2026**
+
+---
+
+## Work since Sprint 3 (Plans 04–08 — not in the card table above)
+
+| Plan / area | Shipped |
+|---|---|
+| **PAY (payments)** | Stripe billing live — `IStripeService`, `BillingController` (checkout-session / portal-session / sync / webhook), `Organization` Stripe columns, `StripeWebhookEvent` idempotency store, `ProcessStripeWebhookCommand`, plan-limit 402 enforcement, reconciliation job. See `docs/payments.md`. |
+| **Data-lifecycle / GDPR** | Article 15 export (`AccountExportRequest` + background builder + signed S3 URL, 1/7-days) and Article 17 erasure (`AccountErasureRequest`, 30-day grace + cancel token, hard-delete job). `AccountController`. Retention by tier (`RetentionEnforcementJob`). `docs/retention.md`, `docs/pii-inventory.md`. |
+| **PD-07 observability** | Loki sink + Tempo (OTLP) + Prometheus custom metrics + 6 Grafana dashboards + Alertmanager rules + Uptime Kuma. `docs/observability-setup.md`, `docs/slo.md`. |
+| **PD-05 realm-as-code** | Keycloak Terraform module (`infrastructure/terraform/keycloak/`) — realm + 3 OIDC clients + service-account grants + required actions; dev realm JSON hardened (verify-email, brute-force, password policy, refresh rotation). |
+| **PD-08 security / multi-tenancy** | Defense-in-depth tenancy: repo filter → EF global query filter → **Postgres RLS** (`AddRowLevelSecurity`) → per-request session GUC (`TenantConnectionInterceptor`, `ICurrentOrgProvider`). Append-only audit (`AddAuditLogAppendOnlyTrigger`). Registration abuse (Turnstile, disposable-email, honeypot). Config-driven CORS, security headers, expanded rate limits, ingest/body caps. `docs/multi-tenancy-verification.md`, `docs/security/`. |
+| **Surfaces** | Marketing site (`src/marketing`, Next.js 16) and ingest SDKs (`@stacksift/winston-transport`, `StackSift.Serilog.Sink`) added with their own CI jobs. |
+
+## Docker integration (2026-05-31 — `ffe8d09..2cc40a3`)
+
+The stack now boots and works **composed in Docker**, not just as local dev processes. Four integration bugs fixed:
+
+- **Keycloak dual-hostname issuer** (`ead2559`): browser hits `localhost:8080`, containers hit `keycloak:8080`. Compose now pins `KC_HOSTNAME=http://localhost:8080` + `KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true`; the API accepts **both** issuers via `PostConfigure<JwtBearerOptions>.ValidIssuers` (`Keycloak__PublicAuthServerUrl` + `Keycloak__AuthServerUrl`) while JWKS/metadata stay internal. Fixes the post-login 401 reload loop **and** the unreachable verify-email link together.
+- **Verify-email on registration** (`98566b9`): realm requires `verifyEmail=true` but admin-API user creation leaves `emailVerified=false` and sends nothing → accounts stuck "not fully set up". `IKeycloakAdminClient.SendVerifyEmailAsync` (`PUT users/{id}/send-verify-email`) now fires after persist in `RegisterUserCommandHandler`; mail failure is logged, never rolls back the registration.
+- **Migrator base image** (`d3a9786`): `MigrationRunner` Dockerfile runtime base `dotnet/runtime:alpine` → `dotnet/aspnet:alpine` (Application's `IFormFile` FrameworkReference needs `Microsoft.AspNetCore.App`).
+- **Migrator DI** (`4a8134e`): Plan 08 made `ICurrentOrgProvider` a required `AppDbContext` ctor dep; runtime `MigrationRunner` now registers `MigrationCurrentOrgProvider` (tenant filter disabled), not just the design-time factory.
+
+### New env vars (Docker integration)
+
+| Variable | Where | Notes |
+|---|---|---|
+| `Keycloak__PublicAuthServerUrl` | `Program.cs` `ValidIssuers` | Public issuer the tokens carry (`http://localhost:8080`); defaults to `AuthServerUrl` if unset. |
+| `KC_HOSTNAME` / `KC_HOSTNAME_BACKCHANNEL_DYNAMIC` | Keycloak container | Pin public issuer + email links; internal callers keep using `keycloak:8080`. |
 
 ---
 
@@ -95,6 +136,11 @@ ConfidenceScore, CreatedAt, CompletedAt
 Id, Email, DisplayName, AvatarUrl, Role (UserRole),
 OrganizationId, CreatedAt, LastLoginAt
 ```
+
+> Backend-internal entities added since (not in `types/domain.ts`): `Invitation`, `AuditLogEntry`,
+> `AccountErasureRequest`, `AccountExportRequest`, `StripeWebhookEvent`; `Organization` gained the
+> Stripe block + `Plan`; `LogSource` gained `KeyHash`/`KeyPrefix`. Extra enums: `Plan`,
+> `SubscriptionStatus`, `AccountErasureStatus`, `AccountExportStatus`, `AuditEvent`.
 
 ### Enum values (serialised as lowercase strings)
 
@@ -147,7 +193,15 @@ Start all services: `cd infrastructure/docker && docker compose up -d`
   - Method `ReceiveLogEntry` → broadcasts `LogEntry` shape
   - Method `ReceiveAlert` → broadcasts `Alert` shape
 
-### Planned endpoints (to be implemented)
+### Endpoints (all implemented — 16 controllers, `/api/v1/*`)
+
+> Route corrections vs the original list below: log ingest is **`POST /api/v1/logs/ingest`**;
+> members live under **`/api/v1/organizations/{orgId}/members`** (list `ViewerOrAbove`, all
+> mutations `OwnerOnly`); current org is **`GET /api/v1/organizations/current`** (PUT `OwnerOnly`);
+> projects expose nested **`GET|POST /api/v1/projects/{id}/log-sources`**. Plus controllers not in
+> the original list: Billing, Members, Account (GDPR), AiAnalyses, AlertRules, LogSources.
+
+Original planned set (kept for reference):
 
 ```
 GET    /api/v1/health                        (public)
@@ -223,6 +277,59 @@ GET    /api/v1/dashboard/stats               (Redis cached)
 - **minio-init container:** Runs once after MinIO healthcheck passes; creates the `stacksift-uploads` bucket. Uses `minio/mc:latest`.
 - **Application FrameworkReference:** Added `<FrameworkReference Include="Microsoft.AspNetCore.App" />` to `StackSift.Application.csproj` so `IFormFile` is available in the command without adding an extra package.
 - **global.json:** Pinned at `10.0.104` with `rollForward: disable` — do not change; teammates have this SDK. If your local machine only has a later SDK, temporarily edit global.json locally but do NOT commit the change.
+
+---
+
+## NUF-1 Notes & Gotchas
+
+- **Keycloak admin client is the only path to the KC admin REST API** — `IKeycloakAdminClient` in `Application/Interfaces` is the seam; controllers and handlers must never call `/admin/realms/.../users` directly. NUF-2 (registration) and NUF-5 (members) consume this interface.
+- **`PUT /admin/realms/{realm}/users/{id}` replaces the full representation** — sending only `{ "attributes": { … } }` blanks `firstName`/`email`/credentials. `SetUserAttributesAsync` uses GET-mutate-PUT for that reason. A unit test pins the PUT body shape so the bug can't re-emerge.
+- **Service-account token coalescing** — `KeycloakAdminClient` holds a `SemaphoreSlim` so 1000 concurrent `CreateUserAsync` calls produce a single `client_credentials` round-trip (verified in `TokenCache_CoalescesConcurrentCalls`). TTL = 60 s minus a 10 s safety margin; `TimeProvider` is injected so the unit test can advance the clock past expiry.
+- **Realm reimport** — JSON edits to `infrastructure/keycloak/stacksift-realm.json` only take effect after `docker compose down -v && docker compose up -d`. Document referenced in `docs/auth-flow.md` §5 and §7.1.
+- **Admin client secret** — the realm JSON ships with the literal `REPLACE_AT_RUNTIME` placeholder. Real value is auto-generated by Keycloak on first import; copy it from the admin UI into `dotnet user-secrets set "Keycloak:Admin:AdminClientSecret" "..."`.
+
+### Env vars (NUF-1)
+
+| Variable | Where it's read | Notes |
+|---|---|---|
+| `Keycloak__Admin__RealmUrl` | `KeycloakAdminOptions.RealmUrl` | Default `http://localhost:8080/realms/stacksift` (`appsettings.json`). |
+| `Keycloak__Admin__AdminBaseUrl` | `KeycloakAdminOptions.AdminBaseUrl` | Default `http://localhost:8080/admin/realms/stacksift`. **No trailing slash** — string-concat in `KeycloakAdminClient` relies on it. |
+| `Keycloak__Admin__AdminClientId` | `KeycloakAdminOptions.AdminClientId` | Default `stacksift-backend-admin`. |
+| `Keycloak__Admin__AdminClientSecret` | `KeycloakAdminOptions.AdminClientSecret` | Sourced from `dotnet user-secrets` locally; from the secret manager (or compose env) in prod. Placeholder lives in `infrastructure/docker/.env.example`. |
+
+---
+
+## NUF-2 Notes & Gotchas
+
+- **Email is the natural key.** All registration paths lower-case + trim before any comparison or write. The DB-level unique index on `Users.Email` is case-sensitive; matching the `Invitation` lookup against the same normalised form is what keeps the join consistent.
+- **Invitations win over the registration form.** A user who submits `isOwner: true` but matches a pending, non-expired `Invitation` is created with the *invitation's* role + org; the form value is discarded. Documented in §15 Q9 of the parent New-User-Flow plan; verified by `PendingInvitation_OverridesFormRole`.
+- **`User.Id == KeycloakUserId` is deliberate.** We reuse Keycloak's generated UUID as the `Users.Id` PK — saves a separate `keycloak_user_id` column and makes downstream joins trivial. EF Core's `Users.Id` has `DefaultValueSql("gen_random_uuid()")` but the registration handler always sets `Id` explicitly, so the default never fires for registered users.
+- **DB-failure compensation deletes the orphan Keycloak user.** The compensating `DeleteUserAsync` runs with `CancellationToken.None` because the caller's `ct` may already be cancelled (e.g. on app shutdown) and we'd rather log a delete failure than leave a permanent orphan. Compensation failures are still logged at `Error` level.
+- **Pending-invitation lookup repo uses `LOWER(email)`** on both sides — `InvitationRepository.FindPendingByEmailAsync` normalises the argument; the column is written normalised by the same handler. The partial unique index `IX_Invitations_Email` (filter `"AcceptedAt" IS NULL AND "IsDeleted" = false`) makes re-invitation after acceptance work without a soft-delete dance.
+- **No password-policy mirroring.** The `RegisterUserCommandValidator` enforces the minimum bar (12 chars + upper + lower + digit); Keycloak's password policy is the second gate. Don't duplicate Keycloak's policy in the validator — let Keycloak surface its own rejection and surface that as 400.
+- **Rate-limit test ordering.** The `Register` policy partitions by `RemoteIpAddress`. Within an xUnit collection sharing one `StackSiftWebApplicationFactory`, exhausting the IP partition in one test would cascade into 429s for siblings. `RegisterEndpointTests` applies `AlphabeticalTestCaseOrderer` and prefixes the rate-limit test with `Z_` so it runs last; any new register-touching test should keep that contract.
+
+---
+
+## NUF-5 Notes & Gotchas
+
+- **`IMemberEmailComposer` keeps Application clean of template loading.** The Application layer command needs an `EmailMessage` to call `IEmailService.SendAsync`, but HTML templates + `AppOptions.FrontendBaseUrl` are Infrastructure concerns. The interface (Application) takes raw inputs (org name, role, token, expiry) and returns a fully-rendered `EmailMessage`; the impl (Infrastructure) loads embedded HTML via `MailKitEmailService.LoadTemplate`, URL-encodes the token, escapes interpolated text.
+- **`HttpContextCurrentUserService.UserId` fallback.** The default JWT bearer handler maps `sub` → `ClaimTypes.NameIdentifier` and `email` → `ClaimTypes.Email` *before* claims hit the principal — `FindFirstValue("sub")` returns null in that case. The service now reads both names so handlers like `AddOrInviteMemberCommandHandler` (the first consumer of `UserId` for a *query*, not just metadata) work correctly. Pre-NUF-5 consumers used `UserId` for Stripe metadata only and silently got `Guid.Empty` — fix made retroactively safe.
+- **`MembersController` uses `ViewerOrAbove` for `GET`, `OwnerOnly` for the three mutations.** The named policy `MemberOrAbove` already exists but excludes `viewer`; per plan §2.5 every team member (viewer included) sees the team list, so the list endpoint uses `ViewerOrAbove`.
+- **Last-owner guard is shared between `UpdateMemberRoleCommand` and `RemoveMemberCommand`.** Both call `IUserRepository.CountOwnersAsync(orgId)` before mutating. Canonical message: `"Cannot remove or demote the last owner of an organisation."` — the frontend tests against this string.
+- **Removed users keep their account.** `RemoveMemberCommand` clears `OrganizationId`, sets `Role = Viewer`, and clears `InvitedByUserId`, then mirrors the same on Keycloak attrs — but does **not** call `DeleteUserAsync`. The user lands back on `/waiting` on next sign-in. GDPR full-delete is a separate post-NUF card.
+- **Invitation upsert avoids partial-unique-index conflicts.** When the same email is re-invited while a pending invitation already exists, `AddOrInviteMemberHandler` *updates* the existing row (new token, new expiry, possibly new role/org) rather than inserting. The NUF-2 partial unique index `IX_Invitations_Email WHERE AcceptedAt IS NULL AND IsDeleted = false` would otherwise reject the second insert.
+- **`Z_AcceptInvitation_UnknownToken_Returns409` is *not* in `MembersControllerTests`.** It would share the `Register` rate-limit envelope with `RegisterEndpointTests` and intermittently surface 429 instead of 409. Unit-level coverage in `AcceptInvitationCommandHandlerTests.UnknownToken_Returns409` is the trustworthy assertion.
+
+---
+
+## ORG-1 Notes & Gotchas
+
+- **`Organizations.Slug` unique index doesn't filter on `IsDeleted = false`.** Soft-delete would leave the slug occupied forever. The create-org compensation path therefore uses `HardDeleteAsync` — a raw `ExecuteDeleteAsync` that bypasses the `AppDbContext.SaveChangesAsync` soft-delete interceptor. **Do not use `HardDeleteAsync` outside this seam**; normal org deletion still goes through the soft-delete `DeleteAsync`.
+- **Owner promotion is silent and force-applied** on org creation. Any authenticated user without an org becomes Owner of the new one regardless of their pre-existing role. Logged at Information level when the previous role wasn't Owner; doesn't fire via the UI but the handler is the source of truth.
+- **The handler checks for "already has an org" twice** — once on `currentUser.OrganizationId != Guid.Empty` (from the JWT claim) and once on the freshly-loaded `user.OrganizationId is not null` (from the DB row). Defends against cookie/DB drift; the second check is what catches a stale JWT after a re-attach.
+- **NUF-1 realm-import bugs were prerequisites** for this card to work at all (real registration to real Keycloak). The fix lives in the same branch: `service-account-stacksift-backend-admin` user UUID lengthened beyond 36 chars (Keycloak's `USER_ENTITY.ID` is `varchar(36)`); `stacksift-backend-admin` client `fullScopeAllowed: true` (was false, which dropped the realm-management role mappings from the issued access token).
+- **The mock onboarding BFF is dead.** `src/frontend/src/app/api/onboarding/create-org/route.ts` no longer generates unsigned JWTs; it proxies to `POST /api/v1/organizations` and runs a Keycloak `refresh_token` grant to rotate the cookie. `replaceSessionCookie` in `src/frontend/src/app/lib/auth/session.ts` was the helper that minted those unsigned JWTs and is removed along with its test.
 
 ---
 

@@ -1,28 +1,20 @@
 import { useQuery } from '@tanstack/react-query';
-import { queryKeys } from '@/app/lib/query-keys';
+import { z } from 'zod';
 import { apiClient } from '@/app/lib/api-client';
-import { PaginatedResponseSchema, AlertRuleSchema } from '@/app/lib/api-schemas';
+import { AlertRuleSchema } from '@/app/lib/api-schemas';
+import { queryKeys } from '@/app/lib/query-keys';
 import type { AlertRule } from '@/app/types';
-import type { PaginatedResponse } from '@/app/types';
 
-// ---------------------------------------------------------------------------
-// useAlertRules — list alert rules, optionally filtered by projectId
-//
-// GET /api/v1/alert-rules?projectId=...&page=1&pageSize=50
-// ---------------------------------------------------------------------------
-
-export function useAlertRules(projectId?: string) {
+export function useAlertRules(projectId: string | null | undefined) {
   return useQuery<AlertRule[]>({
-    queryKey: queryKeys.alertRules.list(projectId),
+    queryKey: queryKeys.alertRules.list(projectId ?? ''),
     queryFn: async () => {
-      const params: Record<string, string | number> = { page: 1, pageSize: 50 };
-      if (projectId) params.projectId = projectId;
-
-      const response = await apiClient.get<PaginatedResponse<AlertRule>>(
-        '/api/v1/alert-rules',
-        { params, schema: PaginatedResponseSchema(AlertRuleSchema) },
-      );
-      return response.data.data;
+      const response = await apiClient.get<AlertRule[]>('/api/v1/alert-rules', {
+        params: { projectId },
+        schema: z.array(AlertRuleSchema),
+      });
+      return response.data;
     },
+    enabled: Boolean(projectId),
   });
 }

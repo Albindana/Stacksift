@@ -14,14 +14,30 @@ public static class KeycloakTestRealmSeeder
     public const string RealmName = "stacksift";
     public const string TestClientId = "stacksift-api-test";
     public const string ResourceServer = "stacksift-api";
+    public const string AdminServiceAccountClientId = "stacksift-backend-admin";
 
     /// <summary>Org-A user (admin role) — used in auth + CRUD tests.</summary>
     public const string AdminOrgAEmail = "admin@org-a.test";
     public const string AdminOrgAPassword = "admin-pass-a";
 
-    /// <summary>Org-B user (viewer role) — used in cross-tenant tests.</summary>
+    /// <summary>Org-B user (viewer role) — used in cross-tenant GET tests.</summary>
     public const string ViewerOrgBEmail = "viewer@org-b.test";
     public const string ViewerOrgBPassword = "viewer-pass-b";
+
+    /// <summary>Org-B user (admin role) — used in cross-tenant mutation tests where endpoints
+    /// require MemberOrAbove/AdminOrAbove; viewer would get 403 before the handler org check fires.</summary>
+    public const string AdminOrgBEmail = "admin@org-b.test";
+    public const string AdminOrgBPassword = "admin-pass-b";
+
+    /// <summary>Org-A owner — used by NUF-5 members tests where the endpoint requires OwnerOnly.</summary>
+    public const string OwnerOrgAEmail = "owner@org-a.test";
+    public const string OwnerOrgAPassword = "owner-pass-a";
+
+    /// <summary>Ownerless user — used by ORG-1 create-organisation tests. Has a Keycloak
+    /// account with role=viewer but no organization_id attribute. Tests must seed the
+    /// matching `Users` row themselves (this seeder only owns Keycloak state).</summary>
+    public const string OwnerlessEmail = "ownerless@example.test";
+    public const string OwnerlessPassword = "ownerless-pass";
 
     // Fixed UUIDs so tests can seed DB data for a known org and reference it
     public static readonly Guid OrgAId = new("aaaaaaaa-0000-0000-0000-000000000001");
@@ -29,7 +45,7 @@ public static class KeycloakTestRealmSeeder
 
     private static readonly JsonSerializerOptions Jso = new() { WriteIndented = false };
 
-    public static async Task SeedAsync(string keycloakBaseAddress)
+    public static async Task<string> SeedAsync(string keycloakBaseAddress)
     {
         using var http = new HttpClient { BaseAddress = new Uri(keycloakBaseAddress) };
 
@@ -121,6 +137,41 @@ public static class KeycloakTestRealmSeeder
 
         await CreateUserAsync(http, ViewerOrgBEmail, ViewerOrgBPassword,
             orgId: OrgBId, role: "viewer");
+
+        await CreateUserAsync(http, AdminOrgBEmail, AdminOrgBPassword,
+            orgId: OrgBId, role: "admin");
+
+        await CreateUserAsync(http, OwnerOrgAEmail, OwnerOrgAPassword,
+            orgId: OrgAId, role: "owner");
+
+        await CreateUserAsync(http, OwnerlessEmail, OwnerlessPassword,
+            orgId: null, role: "viewer");
+
+        // 10. Create the backend service-account client (NUF-1).
+        //     Confidential, service accounts enabled, no other flows.
+        await CreateClientAsync(http, new
+        {
+            clientId = AdminServiceAccountClientId,
+            protocol = "openid-connect",
+            publicClient = false,
+            serviceAccountsEnabled = true,
+            standardFlowEnabled = false,
+            directAccessGrantsEnabled = false,
+            enabled = true,
+        });
+
+        // 11. Grant the service account `manage-users`, `view-users`, `query-users`
+        //     on the built-in `realm-management` client.
+        var adminClientUuid = await GetClientUuidAsync(http, AdminServiceAccountClientId);
+        var realmMgmtUuid = await GetClientUuidAsync(http, "realm-management");
+        var saUserId = await GetServiceAccountUserIdAsync(http, adminClientUuid);
+        var roles = await GetClientRolesAsync(http, realmMgmtUuid,
+            "manage-users", "view-users", "query-users");
+        await AssignClientRolesAsync(http, saUserId, realmMgmtUuid, roles);
+
+        // 12. Read the auto-generated client secret so callers can configure
+        //     a real KeycloakAdminClient against the test realm.
+        return await GetClientSecretAsync(http, adminClientUuid);
     }
 
     // ── Private helpers ──────────────────────────────────────────────────────
@@ -190,7 +241,7 @@ public static class KeycloakTestRealmSeeder
     }
 
     private static async Task CreateUserAsync(HttpClient http, string email, string password,
-        Guid orgId, string role)
+        Guid? orgId, string role)
     {
         var payload = JsonSerializer.Serialize(new
         {
@@ -200,7 +251,7 @@ public static class KeycloakTestRealmSeeder
             emailVerified = true,
             attributes = new Dictionary<string, string[]>
             {
-                ["organization_id"] = [orgId.ToString()],
+                ["organization_id"] = orgId is null ? [] : [orgId.Value.ToString()],
                 ["stacksift_role"] = [role],
             },
             credentials = new[]
@@ -214,5 +265,48 @@ public static class KeycloakTestRealmSeeder
 
         if (resp.StatusCode != System.Net.HttpStatusCode.Conflict)
             resp.EnsureSuccessStatusCode();
+    }
+
+    private static async Task<string> GetServiceAccountUserIdAsync(HttpClient http, string clientUuid)
+    {
+        var resp = await http.GetAsync(
+            $"/admin/realms/{RealmName}/clients/{clientUuid}/service-account-user");
+        resp.EnsureSuccessStatusCode();
+        var user = JsonNode.Parse(await resp.Content.ReadAsStringAsync())!.AsObject();
+        return user["id"]!.GetValue<string>();
+    }
+
+    private static async Task<List<JsonObject>> GetClientRolesAsync(
+        HttpClient http, string clientUuid, params string[] roleNames)
+    {
+        var resp = await http.GetAsync($"/admin/realms/{RealmName}/clients/{clientUuid}/roles");
+        resp.EnsureSuccessStatusCode();
+        var all = JsonNode.Parse(await resp.Content.ReadAsStringAsync())!.AsArray();
+        var wanted = new HashSet<string>(roleNames);
+        return [.. all
+            .OfType<JsonObject>()
+            .Where(r => wanted.Contains(r["name"]!.GetValue<string>()))];
+    }
+
+    private static async Task AssignClientRolesAsync(
+        HttpClient http, string userId, string clientUuid, IEnumerable<JsonObject> roles)
+    {
+        var body = new JsonArray([.. roles.Select(r => (JsonNode)r.DeepClone())]);
+        var resp = await http.PostAsync(
+            $"/admin/realms/{RealmName}/users/{userId}/role-mappings/clients/{clientUuid}",
+            new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json"));
+        if (resp.StatusCode != System.Net.HttpStatusCode.NoContent &&
+            resp.StatusCode != System.Net.HttpStatusCode.Created &&
+            resp.StatusCode != System.Net.HttpStatusCode.OK)
+            resp.EnsureSuccessStatusCode();
+    }
+
+    private static async Task<string> GetClientSecretAsync(HttpClient http, string clientUuid)
+    {
+        var resp = await http.GetAsync(
+            $"/admin/realms/{RealmName}/clients/{clientUuid}/client-secret");
+        resp.EnsureSuccessStatusCode();
+        var node = JsonNode.Parse(await resp.Content.ReadAsStringAsync())!.AsObject();
+        return node["value"]!.GetValue<string>();
     }
 }

@@ -45,6 +45,12 @@ public sealed class StackSiftWebApplicationFactory : WebApplicationFactory<Progr
     /// <summary>Real Keycloak token client — use in tests to obtain JWTs.</summary>
     public KeycloakTokenClient Tokens { get; private set; } = null!;
 
+    /// <summary>Base URL of the Testcontainers Keycloak instance.</summary>
+    public string KeycloakBaseAddress => _keycloak.GetBaseAddress();
+
+    /// <summary>Auto-generated secret for the `stacksift-backend-admin` service-account client.</summary>
+    public string KeycloakAdminClientSecret { get; private set; } = "";
+
     // ── IAsyncLifetime ────────────────────────────────────────────────────────
 
     async Task IAsyncLifetime.InitializeAsync()
@@ -62,7 +68,7 @@ public sealed class StackSiftWebApplicationFactory : WebApplicationFactory<Progr
         await Task.WhenAll(_postgres.StartAsync(), _keycloak.StartAsync(), _redis.StartAsync());
 
         // Seed the Keycloak test realm (realm, client, mappers, two test users).
-        await KeycloakTestRealmSeeder.SeedAsync(_keycloak.GetBaseAddress());
+        KeycloakAdminClientSecret = await KeycloakTestRealmSeeder.SeedAsync(_keycloak.GetBaseAddress());
 
         // Run EF Core migrations directly so Respawn can be initialised before
         // the first test hits the host (avoids a race with the lazy host build).
@@ -80,8 +86,23 @@ public sealed class StackSiftWebApplicationFactory : WebApplicationFactory<Progr
         Environment.SetEnvironmentVariable("Keycloak__Resource", KeycloakTestRealmSeeder.ResourceServer);
         Environment.SetEnvironmentVariable("Keycloak__VerifyTokenAudience", "true");
         Environment.SetEnvironmentVariable("Keycloak__RequireHttpsMetadata", "false");
+        Environment.SetEnvironmentVariable("Keycloak__Admin__RealmUrl",
+            $"{_keycloak.GetBaseAddress().TrimEnd('/')}/realms/{KeycloakTestRealmSeeder.RealmName}");
+        Environment.SetEnvironmentVariable("Keycloak__Admin__AdminBaseUrl",
+            $"{_keycloak.GetBaseAddress().TrimEnd('/')}/admin/realms/{KeycloakTestRealmSeeder.RealmName}");
+        Environment.SetEnvironmentVariable("Keycloak__Admin__AdminClientId",
+            KeycloakTestRealmSeeder.AdminServiceAccountClientId);
+        Environment.SetEnvironmentVariable("Keycloak__Admin__AdminClientSecret",
+            KeycloakAdminClientSecret);
         Environment.SetEnvironmentVariable("Redis__ConnectionString", _redis.GetConnectionString());
         Environment.SetEnvironmentVariable("Serilog__Loki__Url", "");
+        Environment.SetEnvironmentVariable("LogSources__KeyPepperBase64",
+            Convert.ToBase64String("12345678901234567890123456789012"u8.ToArray()));
+        // Disable the per-user / per-org throttles for the suite (it makes many
+        // requests as the same Keycloak user within one window).
+        Environment.SetEnvironmentVariable("RateLimiting__PerUserPermitPerMinute", "1000000");
+        Environment.SetEnvironmentVariable("RateLimiting__PerOrgPermitPerMinute", "1000000");
+        Environment.SetEnvironmentVariable("Cors__AllowedOrigins__0", "http://localhost:3000");
 
         // Warm up the test server — Program.cs now reads the env vars above.
         _ = Server;
@@ -109,8 +130,16 @@ public sealed class StackSiftWebApplicationFactory : WebApplicationFactory<Progr
         Environment.SetEnvironmentVariable("Keycloak__Resource", null);
         Environment.SetEnvironmentVariable("Keycloak__VerifyTokenAudience", null);
         Environment.SetEnvironmentVariable("Keycloak__RequireHttpsMetadata", null);
+        Environment.SetEnvironmentVariable("Keycloak__Admin__RealmUrl", null);
+        Environment.SetEnvironmentVariable("Keycloak__Admin__AdminBaseUrl", null);
+        Environment.SetEnvironmentVariable("Keycloak__Admin__AdminClientId", null);
+        Environment.SetEnvironmentVariable("Keycloak__Admin__AdminClientSecret", null);
         Environment.SetEnvironmentVariable("Redis__ConnectionString", null);
         Environment.SetEnvironmentVariable("Serilog__Loki__Url", null);
+        Environment.SetEnvironmentVariable("LogSources__KeyPepperBase64", null);
+        Environment.SetEnvironmentVariable("RateLimiting__PerUserPermitPerMinute", null);
+        Environment.SetEnvironmentVariable("RateLimiting__PerOrgPermitPerMinute", null);
+        Environment.SetEnvironmentVariable("Cors__AllowedOrigins__0", null);
     }
 
     // ── WebApplicationFactory overrides ──────────────────────────────────────
@@ -125,6 +154,14 @@ public sealed class StackSiftWebApplicationFactory : WebApplicationFactory<Progr
             // Replace IMessagePublisher with a silent no-op (bus not running).
             ReplaceService<IMessagePublisher>(services,
                 ServiceDescriptor.Scoped<IMessagePublisher, NoOpMessagePublisher>());
+
+            // ── Email: replace MailKitEmailService with a no-op ──
+            // CI has no SMTP and no RabbitMQ; the real impl retries 3× (~42 s
+            // total) then publishes to a dead-letter exchange, both of which
+            // hang. NUF-5 handlers send notification emails on every member
+            // attach / invitation, so without this the suite stalls.
+            ReplaceService<global::StackSift.Domain.Interfaces.IEmailService>(services,
+                ServiceDescriptor.Scoped<global::StackSift.Domain.Interfaces.IEmailService, NoOpEmailService>());
 
             // ── Hangfire: remove the background processing server ──
             // Storage is still initialised (same Postgres) so IRecurringJobManager works.
@@ -161,7 +198,7 @@ public sealed class StackSiftWebApplicationFactory : WebApplicationFactory<Progr
             .UseNpgsql(_postgres.GetConnectionString(), b => b.UseVector())
             .Options;
 
-        await using var db = new AppDbContext(opts, new FakeCurrentUserService());
+        await using var db = new AppDbContext(opts, new FakeCurrentUserService(), new FakeCurrentOrgProvider());
         await db.Database.MigrateAsync();
     }
 

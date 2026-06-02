@@ -98,6 +98,16 @@ The `--import-realm` flag is idempotent — if the `stacksift` realm already exi
 
 ---
 
+## 5b. WebSocket authentication (SignalR)
+
+The SignalR hub at `/hubs/stacksift` cannot receive a custom `Authorization` header (browsers don't allow it on the WebSocket upgrade). The backend reads the JWT from the `?access_token=` query string instead — see `Program.cs` `JwtBearerEvents.OnMessageReceived`, gated to paths under `/hubs`.
+
+On the client, `useSignalR`'s `accessTokenFactory` fetches the token from `/api/auth/token`, which silent-refreshes the session cookie if expired. `accessTokenFactory` runs per-connection (not per-message), so a mid-connection token expiry forces a reconnect — `withAutomaticReconnect` handles the retry, picking up a fresh token on the next `accessTokenFactory` invocation.
+
+Cross-tenant guard: `AlertHub.JoinProjectGroup` does a real repository lookup; a `NotFoundException` (project not in caller's org) is mapped to `HubException("Forbidden")`. The client maps that to a toast and clears `useUIStore.activeProjectId` rather than logging the user out — the JWT itself is still valid.
+
+---
+
 ## 6. Manual smoke-test checklist
 
 Run this before opening the FS-02 PR and before any demo rehearsal:
@@ -123,3 +133,371 @@ Run this before opening the FS-02 PR and before any demo rehearsal:
 [ ] Click Sign out → cookie cleared, redirect to /login
 [ ] Flip NEXT_PUBLIC_AUTH_MOCK=true → sign in → confirm Alice Nguyen (regression check)
 ```
+
+---
+
+## 7. ROPC + backend admin client (NUF-1)
+
+The New-User-Flow series adds two pieces that bypass the hosted Keycloak login page:
+
+1. **Direct Access Grants (ROPC)** on the `stacksift-frontend` client — so the in-app login + register forms (NUF-3) can post `{email, password}` straight to `/protocol/openid-connect/token`, get tokens, and hand them to the BFF cookie machinery without a redirect.
+2. **A confidential `stacksift-backend-admin` service-account client** — used by the .NET backend (and *only* the .NET backend) to call `/admin/realms/stacksift/users` for registration (NUF-2) and member-management (NUF-5). The admin secret never reaches the browser.
+
+### 7.1 Reimport gotcha (same as §5, called out again)
+
+Realm-config changes only take effect after a volume wipe:
+
+```
+cd infrastructure/docker
+docker compose down -v && docker compose up -d
+```
+
+Then reset the two seeded users' passwords per §4. The auto-generated `stacksift-backend-admin` secret is visible in the Keycloak UI: **Clients → stacksift-backend-admin → Credentials → Client secret**.
+
+### 7.2 Configuring the .NET backend
+
+Copy the secret into `dotnet user-secrets` for local dev:
+
+```bash
+cd src/backend/StackSift.Api
+dotnet user-secrets set "Keycloak:Admin:AdminClientSecret" "<paste from Keycloak UI>"
+```
+
+For docker-compose runs of the backend, pass it as an env var (`Keycloak__Admin__AdminClientSecret=…`). The placeholder lives in `infrastructure/docker/.env.example`.
+
+### 7.3 Why a separate client for admin calls?
+
+- The service account has narrow scope: `manage-users`, `view-users`, `query-users` on `realm-management` and nothing else. Frontend clients never see this scope.
+- The secret is confidential; rotating it doesn't invalidate user sessions.
+- `IKeycloakAdminClient` (Application layer) is the only path to the Keycloak admin REST API — controllers and handlers must never call Keycloak directly. The interface keeps the Clean Architecture order intact.
+
+### 7.4 ROPC test surface
+
+`KeycloakAdminClientIntegrationTests` spins up a Testcontainers Keycloak, provisions the admin client via `KeycloakTestRealmSeeder` (auto-generated secret is read back from `/clients/{uuid}/client-secret`), then exercises create → ROPC-login → JWT-claims round-trip. Tokens still flow through the existing `KeycloakTokenClient` (which uses the `stacksift-api-test` client's direct-grant flow).
+
+---
+
+## 8. Registration (NUF-2)
+
+`POST /api/v1/auth/register` is the only anonymous mutation in the API. The .NET backend owns it end-to-end — the Next.js BFF (NUF-3) is a thin pass-through so the admin client secret never reaches the browser.
+
+```
+Browser            Next.js BFF                .NET API                    Keycloak admin              DB
+  │                     │                         │                            │                       │
+  │── POST /api/auth ──>│                         │                            │                       │
+  │    /register form   │                         │                            │                       │
+  │                     │── POST /api/v1/auth ───>│                            │                       │
+  │                     │    /register            │                            │                       │
+  │                     │                         │── FindPendingByEmail ─────────────────────────────>│
+  │                     │                         │<── Invitation? ────────────────────────────────────│
+  │                     │                         │── CreateUserAsync ────────>│                       │
+  │                     │                         │<── new user UUID ──────────│                       │
+  │                     │                         │── Users.Add + Invitation.AcceptedAt + SaveChanges >│
+  │                     │                         │<───────────────────────────────────────────────────│
+  │                     │<── 201 RegisterUserResult ──                          │                       │
+  │<── 201 ─────────────│                         │                            │                       │
+  │                     │                         │                            │                       │
+  │── POST /api/auth ──>│                         │                            │                       │
+  │    /login (ROPC)    │── POST /token ─────────────────────────────────────>│                       │
+  │                     │<── { access_token, … } ───────────────────────────────                       │
+  │<── 302 / ───────────│  Set-Cookie: session    │                            │                       │
+```
+
+### 8.1 Invitation auto-attach
+
+If a pending, non-expired `Invitation` matches the submitted email (case-insensitive), the handler **uses the invitation's role + organisation, discarding the form's `isOwner` flag**. The invitation row's `AcceptedAt` is stamped in the same transaction. This is the bridge that lets owners on-board members by email alone (see NUF-5).
+
+If `isOwner: true` was submitted but an invitation matched, the user becomes a member of the inviting org with the invitation's role — they do **not** become an owner of a brand-new org. The frontend (NUF-3) doesn't need to guard against this because the result body's `attachedViaInvitation: true` + non-null `organizationId` tell it to route the user to `/` rather than `/onboarding`.
+
+### 8.2 Compensation on DB failure
+
+The handler creates the Keycloak user first, then writes the `Users` row. If `SaveChangesAsync` throws, the compensating call to `IKeycloakAdminClient.DeleteUserAsync` runs with `CancellationToken.None` so it survives a request cancellation; failures are logged at `Error` so an orphan can be reconciled manually. Verified by `DbFailure_RollsBackKeycloakUser`.
+
+### 8.3 Rate limit
+
+5 registrations per `RemoteIpAddress` per 10 minutes (fixed window). The `OnRejected` handler is the shared one — 429 with a `Retry-After` header and a `ProblemDetails` body.
+
+---
+
+## 9. In-app login + register forms (NUF-3)
+
+The frontend now drives the entire login/register flow without redirecting to the Keycloak-hosted page. The legacy GET `/api/auth/login` redirect (Google SSO + PKCE) is kept for SSO and any caller that still expects a redirect.
+
+### 9.1 ROPC sign-in sequence
+
+```
+Browser            Next.js BFF                       Keycloak
+  │                     │                                │
+  │── submit form ─────>│  POST /api/auth/login          │
+  │   {email, pwd}      │  Zod parse loginSchema         │
+  │                     │── POST /token ────────────────>│
+  │                     │   grant_type=password          │
+  │                     │   client_id=stacksift-frontend │
+  │                     │   username/password/scope      │
+  │                     │<── 200 { access_token, … } ────│
+  │                     │  createSessionCookie(tokens)   │
+  │<── 200 ─────────────│  Set-Cookie: stacksift_session │
+  │   ok: true          │                                │
+  │                     │                                │
+  │── router.replace(next) ─> client renders dashboard
+```
+
+- 401 from Keycloak → BFF returns `401 invalid_credentials`. The form shows a single "Invalid email or password" toast — no distinction between "wrong email" vs "wrong password" (avoids account enumeration).
+- 400/503/network failure → `502 upstream_error` / `502 upstream_unreachable`. Generic toast; the form stays usable.
+
+### 9.2 Register sequence (with auto-attach)
+
+```
+Browser            Next.js BFF                       .NET API                       Keycloak
+  │                     │                                │                              │
+  │── submit form ─────>│  POST /api/auth/register       │                              │
+  │  {email,pwd,        │  Zod parse registerSchema      │                              │
+  │   displayName,role} │── POST /api/v1/auth/register ─>│                              │
+  │                     │   { isOwner: role==='owner' }  │                              │
+  │                     │                                │ pending invitation? attach.  │
+  │                     │                                │ else use form role.          │
+  │                     │                                │── CreateUserAsync ──────────>│
+  │                     │                                │<── new user UUID ────────────│
+  │                     │<── 201 RegisterUserResult ─────│  Users.Add + (Invitation.    │
+  │                     │   { attachedViaInvitation, … } │   AcceptedAt if matched)     │
+  │<── 201 ─────────────│                                │                              │
+  │                     │                                │                              │
+  │── POST /api/auth/login ──────────> (ROPC path above) ────────────────────────────────
+  │
+  │── router.replace decided by RESPONSE:
+  │   attachedViaInvitation: true  → "/"
+  │   role: "owner"                → "/onboarding"
+  │   otherwise                    → "/waiting"
+```
+
+The frontend never inspects the form's `role` field to pick the redirect — it inspects the registration *response*. This is what makes the NUF-2 "invitations win" rule visible at the call site.
+
+### 9.3 What changed in the (auth) route group
+
+- New `/landing` — the canonical "you're not signed in" page; `AuthGuard` redirects unauthenticated visitors here (was `/login`).
+- New `/register` — RHF + Zod form, owner-or-viewer radio.
+- New `/waiting` — stub for non-owner registrants without an org (full polling lands in NUF-4).
+- `/login` rewritten as a real POST form; the marketing-funnel `?plan=&from=` logic still resolves to `/billing/checkout?...` for the post-login redirect.
+- `/login/forgot` — a coming-soon stub so the "Forgot password?" link never 404s.
+
+### 9.4 No new mock-mode work
+
+`NEXT_PUBLIC_AUTH_MOCK=true` continues to drive the *legacy* GET-redirect path (Alice auto-login) but the new POST handlers don't have a mock branch. Offline dev for the new forms requires `docker compose up -d`. The component tests stub `global.fetch` and the route-handler tests stub the Keycloak / .NET upstreams — neither leans on a mock-user store.
+
+---
+
+## 10. Four-state post-auth routing (NUF-4)
+
+`OrgGuard` (renamed from `OnboardingGuard`) plus the server-side redirect in `(dashboard)/layout.tsx` together arbitrate where every authenticated user lands.
+
+| State | role | organizationId | Cold visit → server redirect | Mid-session → client guard |
+|---|---|---|---|---|
+| A | any | non-null | render dashboard | render dashboard |
+| A/D | any | non-null, but URL is `/onboarding` or `/waiting` | n/a (those paths live in `(auth)`) | `router.replace('/')` |
+| B | `owner` | null | `redirect('/onboarding')` | `router.replace('/onboarding')` |
+| C | non-owner | null | `redirect('/waiting')` | `router.replace('/waiting')` |
+
+### 10.1 Why two layers
+
+- **Server-side redirect** in the dashboard layout runs before the first render — no flash of dashboard for users who don't belong there. Uses `getServerSessionUser()`, which reads the session cookie via `cookies()` from `next/headers`.
+- **Client-side `OrgGuard`** runs on the dashboard tree's render and re-runs when `useAuthStore.user` changes. The mid-session case it solves: a viewer is sitting on `/waiting`, an owner attaches them in another tab, the next poll refetches `/api/auth/me` with the new `organization_id` claim, `useAuthStore` updates, the guard fires `router.replace('/')`.
+
+### 10.2 The waiting-page polling loop
+
+```
+/waiting  ─ setInterval(30s) ──> invalidateBearerCache()
+                              ──> qc.invalidateQueries(['auth','me'])
+                                      │
+                                      ▼
+                              /api/auth/me  ── reads session cookie ── extracts claims
+                                      │
+                                      ▼
+                              useSession useEffect → useAuthStore.setUser(...)
+                                      │
+                                      ▼
+                              Re-render → if user.organizationId → router.replace('/')
+```
+
+`invalidateBearerCache()` is the non-obvious half: without it, the 55-second in-memory bearer cache in `api-client.ts` would re-serve the old JWT (with no `organization_id` claim) and the user would sit on `/waiting` for nearly a minute after assignment.
+
+The poll cadence is 30 s by design — tighter polling would burn Keycloak token-refresh quota. The "Check now" button is the affordance for users who want an immediate answer.
+
+### 10.3 `(auth)` deliberately doesn't wrap in `OrgGuard`
+
+`/onboarding` and `/waiting` are the destinations the guard wants to send users to. Wrapping the `(auth)` route group in the guard creates a tight redirect loop: the guard sees "non-owner without org, not on /waiting → push to /waiting", but the push lands on `(auth)/waiting/...` which re-runs the guard. The split is intentional: `AuthGuard` still applies (the `(auth)` group requires authentication), but the org-routing is exclusively a `(dashboard)` concern.
+
+---
+
+## 11. Members management + accept-invitation (NUF-5)
+
+### 11.1 Owner adds or invites by email
+
+```
+Owner UI          Next.js BFF (proxy)        .NET API                       Keycloak
+  │                     │                         │                             │
+  │── click "Add" ─────>│                         │                             │
+  │  {email,role}       │── POST /api/v1/orgs/{id}/members ───────────────────>│
+  │                     │   {email, role}         │                             │
+  │                     │                         │ FindByEmail?                │
+  │                     │                         ├─ found, no org → ATTACH:    │
+  │                     │                         │    DB.update                │
+  │                     │                         │    Keycloak.SetUserAttrs ──>│
+  │                     │                         │    email: MemberAdded       │
+  │                     │                         │ → 201 + Member              │
+  │                     │                         ├─ found, same/other org → 409
+  │                     │                         └─ not found → UPSERT INV:    │
+  │                     │                              DB.insert Invitation     │
+  │                     │                              email: Invitation        │
+  │                     │                            → 202 + Invitation         │
+  │<── 201 or 202 ──────│                         │                             │
+```
+
+The result body always has exactly one of `member` or `invitation` populated, and the status code reflects which: `201` (attached) or `202` (invitation sent).
+
+### 11.2 Invitee accepts the invitation
+
+```
+Browser            Next.js BFF                    .NET API                       Keycloak
+  │                     │                              │                              │
+  │── click email link ─│  /accept-invitation?token=…  │                              │
+  │── fill password +   │── POST /api/auth/accept-inv ─>                               │
+  │   displayName       │   {token, password, displayName}                             │
+  │                     │                              │── CreateUserAsync ─────────>│
+  │                     │                              │  (with invited org + role)   │
+  │                     │                              │<── new user UUID ────────────│
+  │                     │                              │  Users.Add + Inv.AcceptedAt  │
+  │                     │<── 200 {userId, email,       │                              │
+  │                     │      organizationId, role}   │                              │
+  │                     │                              │                              │
+  │── POST /api/auth/login (ROPC, email from response) ─────────────────────────────>│
+  │                     │  Set-Cookie stacksift_session                                │
+  │<── router.replace('/') ──                          │                              │
+```
+
+The accept-invitation endpoint is anonymous; it shares the `Register` rate-limit envelope (5 / IP / 10 min) under the same OnRejected handler.
+
+### 11.3 Last-owner guard
+
+Both `UpdateMemberRoleCommand` and `RemoveMemberCommand` run the shared check:
+
+```
+If target.Role == Owner AND CountOwnersAsync(orgId) <= 1:
+    throw ConflictException("Cannot remove or demote the last owner of an organisation.")
+```
+
+The frontend mirrors the rule in `MembersTable` — the sole owner's non-owner role options are `disabled` and the Remove button is hidden — but the API is the ultimate gate. The same 409 message is tested directly in `MembersControllerTests.{Remove,UpdateRole}_LastOwner_Returns409`.
+
+### 11.4 Two converging paths into the org
+
+After NUF-5, an invitee ends up in the inviting org via either route:
+
+1. **Email-link path** → `/accept-invitation?token=…` → `AcceptInvitationCommand` → user is created with role + org pre-set.
+2. **Manual register path** → `/register` with the matching email → `RegisterUserCommandHandler` from NUF-2 finds the pending invitation and auto-attaches (invitation overrides the form's `isOwner`).
+
+Both paths mark `Invitation.AcceptedAt`, and both leave the user with the right `stacksift_role` + `organization_id` claims on their first sign-in.
+
+---
+
+## 13. Mid-session claim refresh (CORE-FUNC)
+
+### 13.1 The stuck-waiting-page bug
+
+`/api/auth/me` decodes the JWT **already stored in the session cookie** — it does not contact Keycloak unless `isSessionExpired()` returns true. This is correct for every normal path: it's fast and doesn't burn Keycloak's refresh-token quota.
+
+The edge case: when a third party mutates the user's Keycloak attributes (e.g. `AddOrInviteMemberCommandHandler.AttachExistingUserAsync` writes a new `organization_id` claim), the cookie still holds the access token from the user's last sign-in. That token won't carry the new claim for up to 5 minutes (the Keycloak access-token TTL). The `/waiting` poll was therefore calling `/api/auth/me`, decoding stale claims, and returning `organizationId: null` indefinitely.
+
+### 13.2 Fix — `POST /api/auth/refresh`
+
+A dedicated BFF route that *always* performs a Keycloak `refresh_token` grant and rotates the session cookie:
+
+```
+Browser                  Next.js BFF                          Keycloak
+  │                             │                                 │
+  │── POST /api/auth/refresh ──>│                                 │
+  │   (from /waiting poll)      │── POST /token                  │
+  │                             │   grant_type=refresh_token ───>│
+  │                             │<── new access_token + rt ───────│
+  │<── 200 { ok: true }         │  Set-Cookie: stacksift_session  │
+  │   (cookie rotated)          │                                 │
+  │                             │                                 │
+  │── invalidateBearerCache() + │                                 │
+  │── qc.invalidateQueries      │                                 │
+  │   (['auth','me'])            │                                 │
+  │                             │                                 │
+  │── GET /api/auth/me ────────>│                                 │
+  │                             │  reads NEW cookie               │
+  │<── 200 { user, org? } ──────│  decodes fresh claims           │
+  │                             │                                 │
+  │── OrgGuard sees org → router.replace('/')
+```
+
+Keycloak's `refresh_token` grant re-evaluates all protocol mappers on issue, so the new access token always carries the current `organization_id` and `stacksift_role` attribute values.
+
+### 13.3 When to use `POST /api/auth/refresh` vs `/api/auth/me`
+
+| Endpoint | When to call | Cost |
+|---|---|---|
+| `GET /api/auth/me` | Any page/component mount; normal session check | Fast — no Keycloak call unless token expired |
+| `POST /api/auth/refresh` | When you *know* the user's claims have been changed by a third party and the cookie may be stale | One Keycloak round-trip (~50–150 ms); invalidates the previous refresh token |
+
+Do not call `POST /api/auth/refresh` from page-mount logic — it fires too often and burns Keycloak's refresh-token rotation quota. Use it only from explicit user-triggered checks (e.g. the `/waiting` poll loop or a "Refresh" button).
+
+### 13.4 Response shapes
+
+| Status | Body | Meaning |
+|---|---|---|
+| `200` | `{ ok: true }` | Cookie rotated with fresh claims |
+| `401` | `{ error: 'unauthenticated' }` | No session cookie present |
+| `401` | `{ error: 'session_expired' }` | Refresh token expired/revoked; cookie cleared (`Max-Age=0`) |
+
+On `session_expired`, the `apiClient`'s 401 handler will redirect the user to `/landing?next=...` on the next API call.
+
+---
+
+## 12. Onboarding — real organisation creation (ORG-1)
+
+The owner-onboarding step (creating the user's first org) was mock-only until ORG-1. The replacement uses a refresh-token grant to flip the cookie from "owner with no org" to "owner of new org" without a sign-out.
+
+### 12.1 Sequence
+
+```
+Browser              Next.js BFF                        .NET API                      Keycloak
+  │                       │                                  │                            │
+  │── submit /onboarding form ─>│                            │                            │
+  │   { name: "Acme Corp" }     │── POST /api/v1/organizations ─>                         │
+  │                       │   Authorization: Bearer (from cookie)                          │
+  │                       │                                  │ guard: caller has no org   │
+  │                       │                                  │ slug-exists pre-check      │
+  │                       │                                  │ INSERT Organization        │
+  │                       │                                  │ UPDATE Users.OrganizationId
+  │                       │                                  │ user.Role = Owner          │
+  │                       │                                  │── SetUserAttributesAsync ─>│
+  │                       │                                  │     organization_id, role  │
+  │                       │                                  │<── 200 ────────────────────│
+  │                       │<── 201 OrganizationDto ──────────│                            │
+  │                       │                                  │                            │
+  │                       │── POST /protocol/openid-connect/token (refresh_token) ──────>│
+  │                       │<── new access_token + refresh_token (with organization_id) ──│
+  │<── 201 + Set-Cookie: stacksift_session ──                │                            │
+  │                       │                                  │                            │
+  │── router.push('/') ─> Dashboard renders ✓ (OrgGuard sees user.organizationId)
+```
+
+### 12.2 Why the refresh-token grant?
+
+The backend updates Keycloak's stored attributes via `SetUserAttributesAsync`, but the user's existing access token (in the session cookie) was minted *before* that update — it doesn't carry the new `organization_id` claim. Three options:
+
+- **Sign-out / sign-back-in.** Worst UX; the user thinks something broke.
+- **Wait for the 5 min access-token expiry.** Worse; the dashboard would 401 until then.
+- **Server-side refresh-token grant in the BFF.** The fastest path: Keycloak issues a fresh pair on `grant_type=refresh_token`, re-reading attributes on the way out. Cost: one extra HTTP round-trip from the BFF to Keycloak after the success response from the .NET API. Picked.
+
+`refreshSession()` in `lib/auth/session.ts` already exists from the silent-refresh path used by `/api/auth/bearer` and `/api/auth/me`; the new BFF route reuses it.
+
+### 12.3 Compensation if Keycloak update fails
+
+Same write-source pattern as NUF-5's `AddOrInviteMember`. The handler INSERTs the org, UPDATEs the user, calls `SetUserAttributesAsync`; if the Keycloak call throws, it reverts the user row *and* `HardDeleteAsync`-es the org so the slug is releasable (a soft-delete would permanently consume the unique-index slot — see `src/backend/CURRENTSTATE.md` "ORG-1 Notes & Gotchas").
+
+### 12.4 Bearer-cache pairing
+
+`useCreateOrganisation`'s `onSuccess` calls `invalidateBearerCache()` *before* `invalidateQueries(['auth', 'me'])`. Without it the apiClient's 55 s in-memory bearer cache would re-serve the old JWT until next expiry — same trap NUF-4's waiting-page polling hit.
+

@@ -1,6 +1,8 @@
 packages:
   - 'src/frontend'
+  - 'src/marketing'
   - 'src/shared'
+  - 'sdks/*'
 allowBuilds:
   core-js: true
   protobufjs: true
