@@ -41,6 +41,14 @@ chart; it consumes the cluster's pre-installed **ECK** and **cert-manager**).
    ⚠️ The realm JSON's `stacksift-frontend` client **Valid Redirect URIs** and
    **Web Origins**, and `stacksift-api` settings, must include the
    `https://*.dmdailydeals.com` hosts or login/CORS will fail. Verify before loading.
+
+   **Keycloak SMTP (Resend).** The imported realm JSON ships with dev SMTP (Mailpit),
+   which sends no real mail. To enable verification + password-reset email in the beta,
+   reconcile the realm with the Terraform module (`infrastructure/terraform/keycloak/`)
+   against the live `auth.dmdailydeals.com` after first boot — it sets Resend SMTP
+   (`smtp.resend.com:587`, STARTTLS, user `resend`, from `noreply@dmdailydeals.com`) from
+   `smtp_*` vars sourced from `secrets.env` (`RESEND_API_KEY`). The Resend secret is never
+   committed; dev stays on Mailpit.
 5. *(Only if `elasticsearch.snapshots.enabled=true`)* ES S3 creds for snapshots:
    ```bash
    MK=$(grep '^MINIO_ROOT_USER=' ~/.config/stacksift-deploy/secrets.env | cut -d= -f2-)
@@ -68,14 +76,18 @@ api/migrator/postgres use published GHCR tags as-is (runtime-configurable).
 `NEXT_PUBLIC_KEYCLOAK_URL=https://auth.dmdailydeals.com`,
 `NEXT_PUBLIC_APP_URL=https://app.dmdailydeals.com`,
 `NEXT_PUBLIC_SIGNALR_HUB_URL=https://api.dmdailydeals.com/hubs/stacksift`,
-`NEXT_PUBLIC_AUTH_MOCK=false`, `NEXT_PUBLIC_SIGNALR_MOCK=false`; marketing:
-`NEXT_PUBLIC_APP_BASE_URL=https://app.dmdailydeals.com`. Push as tag `dmdailydeals`.
+`NEXT_PUBLIC_AUTH_MOCK=false`, `NEXT_PUBLIC_SIGNALR_MOCK=false`,
+`NEXT_PUBLIC_REGISTRATION_INVITE_ONLY=true` (closed beta — hides the create-org path);
+marketing: `NEXT_PUBLIC_APP_BASE_URL=https://app.dmdailydeals.com`. Push as tag `dmdailydeals`.
 
 ## Key design decisions (see zhelpers/DEPLOY for rationale)
 - **Single api replica, role `api`** runs web + Hangfire cron (matches compose).
   Scaling >1 requires `api.role=web` + `cronworker.enabled=true`.
-- **Postgres superuser connections, shared `stacksift` DB with Keycloak** — RLS
-  role-cutover deferred (defense-in-depth still active at app + EF layers).
+- **RLS role cutover active** (`Database__RlsRoleSwitching=true`): the app connects as
+  `stacksift_app` (NOBYPASSRLS) so Postgres row-level security is enforced per request;
+  the migrator runs as `stacksift_owner` via `ConnectionStrings__MigrationsConnection`;
+  trusted background jobs/consumers `SET ROLE` to the owner for cross-org work. Keycloak
+  still shares the `stacksift` DB on the bootstrap superuser (dedicated DB is Gate 3).
 - **WAL archiving OFF** (`postgres.backups.enabled=false`) for Gate 2.
 - **Elasticsearch security/http-TLS OFF** to match the app's plain-http ES client.
 - **No Loki/Tempo** at Gate 2 → console logs only (`kubectl logs`).

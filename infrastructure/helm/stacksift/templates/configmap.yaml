@@ -6,6 +6,9 @@ metadata:
   labels: {{- include "stacksift.labels" . | nindent 4 }}
 data:
   ASPNETCORE_ENVIRONMENT: "Production"
+  # Runtime connects as stacksift_app (NOBYPASSRLS); the interceptor enforces RLS
+  # per request and SET ROLEs to the owner for explicit system-scope background work.
+  Database__RlsRoleSwitching: "true"
   # --- data stores (internal service DNS) ---
   Elasticsearch__Uri: "http://elasticsearch:9200"
   # Gate 2: skip ILM/snapshot bootstrap (needs an ES S3 keystore). Logs still flow
@@ -29,6 +32,8 @@ data:
   Keycloak__Admin__RealmUrl: "http://keycloak:8080/realms/stacksift"
   Keycloak__Admin__AdminBaseUrl: "http://keycloak:8080/admin/realms/stacksift"
   Keycloak__Admin__AdminClientId: "stacksift-backend-admin"
+  # Closed beta: registration requires a pending invitation.
+  Registration__InviteOnly: "true"
   # --- app URLs / CORS / Stripe redirect URLs ---
   App__FrontendBaseUrl: "https://{{ .Values.hosts.app }}"
   Cors__AllowedOrigins__0: "https://{{ .Values.hosts.app }}"
