@@ -1,0 +1,143 @@
+{{- if .Values.prometheus.enabled }}
+{{/* Minimal in-namespace Prometheus (Prometheus-Operator is available cluster-wide).
+     All objects are namespaced. The Prometheus selects ServiceMonitors + the
+     PrometheusRule by the chart's common label in its OWN namespace (the
+     *NamespaceSelector fields are omitted on purpose → operator defaults to the
+     Prometheus's namespace). Grafana/Loki/Tempo are bucket B. */}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: stacksift-prometheus
+  labels: {{- include "stacksift.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: stacksift-prometheus
+  labels: {{- include "stacksift.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [services, endpoints, pods]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [configmaps]
+    verbs: [get]
+  - apiGroups: [networking.k8s.io]
+    resources: [ingresses]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: stacksift-prometheus
+  labels: {{- include "stacksift.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: stacksift-prometheus
+subjects:
+  - kind: ServiceAccount
+    name: stacksift-prometheus
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Prometheus
+metadata:
+  name: stacksift
+  labels: {{- include "stacksift.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  serviceAccountName: stacksift-prometheus
+  retention: {{ .Values.prometheus.retention | quote }}
+  scrapeInterval: {{ .Values.prometheus.scrapeInterval | quote }}
+  resources: {{- toYaml .Values.prometheus.resources | nindent 4 }}
+  serviceMonitorSelector:
+    matchLabels:
+      app.kubernetes.io/name: stacksift
+  ruleSelector:
+    matchLabels:
+      app.kubernetes.io/name: stacksift
+  storage:
+    volumeClaimTemplate:
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: {{ .Values.prometheus.storageClass }}
+        resources:
+          requests:
+            storage: {{ .Values.prometheus.storage }}
+---
+{{/* RabbitMQ Prometheus plugin metrics (port 15692). */}}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: rabbitmq
+  labels: {{- include "stacksift.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels: {{- include "stacksift.selector" (dict "ctx" . "component" "rabbitmq") | nindent 6 }}
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: {{ .Values.prometheus.scrapeInterval | quote }}
+{{- if .Values.prometheus.postgresExporter.enabled }}
+---
+{{/* postgres-exporter (only if a sidecar/Deployment exposing :9187 is present;
+     the chart does not ship one). */}}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: postgres-exporter
+  labels: {{- include "stacksift.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels: {{- include "stacksift.selector" (dict "ctx" . "component" "postgres-exporter") | nindent 6 }}
+  endpoints:
+    - port: metrics
+      interval: {{ .Values.prometheus.scrapeInterval | quote }}
+{{- end }}
+---
+{{/* The 4 Gate-2 alerts, ported from infrastructure/docker/prometheus/rules/.
+     Exprs filter on job="stacksift-api" — the api ServiceMonitor relabels to
+     that. zhelpers/DEPLOY/08 + docs/runbooks/04-incident-response.md. */}}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: stacksift-gate2
+  labels: {{- include "stacksift.labels" . | nindent 4 }}
+spec:
+  groups:
+    - name: stacksift.gate2
+      rules:
+        - alert: ApiDown
+          expr: up{job="stacksift-api"} == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: StackSift API is down
+            description: Prometheus cannot scrape the StackSift API.
+        - alert: HighErrorRate
+          expr: sum(rate(http_requests_received_total{job="stacksift-api",code=~"5.."}[5m])) / sum(rate(http_requests_received_total{job="stacksift-api"}[5m])) > 0.05
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: StackSift API 5xx rate is high
+            description: More than 5% of API requests are returning 5xx.
+        - alert: HighLatencyP99
+          expr: histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket{job="stacksift-api"}[5m]))) > 2
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: StackSift API p99 latency is high
+            description: API p99 latency exceeded 2 seconds for 10 minutes.
+        - alert: AIAnalysisStalled
+          expr: sum(rate(stacksift_ai_analyses_total[30m])) == 0
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: AI analysis appears stalled
+            description: No AI analyses completed or failed in the last hour.
+{{- end }}

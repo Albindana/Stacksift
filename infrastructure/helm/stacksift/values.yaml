@@ -159,4 +159,22 @@ networkPolicy:
 
 # ── Observability (optional; off by default for first stand-up) ────────────────
 serviceMonitor:
-  enabled: false          # set true if a Prometheus (operator) will scrape this ns
+  enabled: false          # legacy single api ServiceMonitor toggle (kept for compat)
+
+# Minimal in-namespace Prometheus (Prometheus-Operator is available cluster-wide).
+# When enabled: a namespaced Prometheus CR + its RBAC, ServiceMonitors for the
+# api and rabbitmq, and a PrometheusRule with the 4 Gate-2 alerts. Grafana/Loki/
+# Tempo are deferred to bucket B (first stand-up survives on `kubectl logs`).
+prometheus:
+  enabled: false
+  retention: 7d
+  storage: 5Gi            # PVC for the Prometheus TSDB
+  storageClass: longhorn
+  scrapeInterval: 30s
+  resources:
+    requests: { cpu: 100m, memory: 384Mi }
+    limits:   { memory: 768Mi }
+  # Enable only if a postgres-exporter sidecar/Deployment exposing :9187 exists.
+  postgresExporter:
+    enabled: false
+    port: 9187
