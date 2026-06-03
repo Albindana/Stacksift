@@ -9,6 +9,9 @@ spec:
   ports:
     - { name: api,     port: 9000, targetPort: 9000 }
     - { name: console, port: 9001, targetPort: 9001 }
+    {{- if .Values.minio.tls.enabled }}
+    - { name: s3tls, port: 443, targetPort: {{ .Values.minio.tls.proxyPort }} }
+    {{- end }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -42,9 +45,28 @@ spec:
           resources: {{- toYaml .Values.minio.resources | nindent 12 }}
           volumeMounts:
             - { name: data, mountPath: /data }
+        {{- if .Values.minio.tls.enabled }}
+        # TLS proxy sidecar: terminates HTTPS on :9443 → MinIO localhost:9000.
+        # Only pgBackRest uses it (via the Service :443); the app/ES stay on :9000.
+        - name: tls-proxy
+          image: {{ .Values.minio.tls.proxyImage }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          ports:
+            - { name: s3tls, containerPort: {{ .Values.minio.tls.proxyPort }} }
+          volumeMounts:
+            - { name: tls-proxy-conf, mountPath: /etc/nginx/nginx.conf, subPath: nginx.conf, readOnly: true }
+            - { name: minio-tls-cert, mountPath: /certs, readOnly: true }
+          resources: {{- toYaml .Values.minio.tls.resources | nindent 12 }}
+        {{- end }}
       volumes:
         - name: data
           persistentVolumeClaim: { claimName: minio-data }
+        {{- if .Values.minio.tls.enabled }}
+        - name: tls-proxy-conf
+          configMap: { name: minio-tls-proxy }
+        - name: minio-tls-cert
+          secret: { secretName: {{ .Values.minio.tls.certSecretName }} }
+        {{- end }}
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim

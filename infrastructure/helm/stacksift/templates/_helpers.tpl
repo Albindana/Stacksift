@@ -41,7 +41,13 @@ app.kubernetes.io/component: {{ .component }}
      stay disabled until MinIO serves TLS. See values.yaml postgres.backups. */}}
 {{- define "stacksift.pgbackrest.repoEnv" -}}
 - { name: PGBACKREST_REPO1_TYPE, value: "s3" }
+{{- if .Values.minio.tls.enabled }}
+{{/* via the TLS proxy sidecar: minio:443 (Service) → nginx :9443 → MinIO :9000.
+     pgBackRest only speaks HTTPS; verify-tls=n accepts the self-signed leaf. */}}
+- { name: PGBACKREST_REPO1_S3_ENDPOINT, value: "minio" }
+{{- else }}
 - { name: PGBACKREST_REPO1_S3_ENDPOINT, value: {{ .Values.postgres.backups.s3.endpoint | quote }} }
+{{- end }}
 - { name: PGBACKREST_REPO1_S3_BUCKET, value: {{ .Values.postgres.backups.s3.bucket | quote }} }
 - { name: PGBACKREST_REPO1_S3_REGION, value: {{ .Values.postgres.backups.s3.region | quote }} }
 - { name: PGBACKREST_REPO1_S3_URI_STYLE, value: {{ .Values.postgres.backups.s3.uriStyle | quote }} }

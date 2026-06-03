@@ -1,0 +1,54 @@
+{{- if .Values.minio.tls.enabled }}
+{{/* TLS for the backup path only (Option B, zhelpers/DEPLOY/to-fix/minio-tls-plan.md).
+     A self-signed leaf + an nginx `stream` sidecar that terminates TLS on :9443 and
+     forwards raw TCP to MinIO's localhost:9000. pgBackRest connects HTTPS with
+     verify-tls=n, so no CA distribution is needed and the app/ES are untouched. */}}
+{{- if .Values.minio.tls.create }}
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: minio-selfsigned
+  labels: {{- include "stacksift.labels" . | nindent 4 }}
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: minio-tls
+  labels: {{- include "stacksift.labels" . | nindent 4 }}
+spec:
+  secretName: {{ .Values.minio.tls.certSecretName }}
+  duration: 8760h
+  renewBefore: 720h
+  privateKey: { algorithm: ECDSA, size: 256 }
+  issuerRef: { name: minio-selfsigned, kind: Issuer }
+  dnsNames:
+    - minio
+    - minio.{{ .Release.Namespace }}
+    - minio.{{ .Release.Namespace }}.svc
+    - minio.{{ .Release.Namespace }}.svc.cluster.local
+{{- end }}
+---
+{{/* nginx L4 (stream) TLS proxy config — transparent TCP passthrough, no HTTP
+     rewriting, so S3 Host/path/large bodies are untouched. */}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: minio-tls-proxy
+  labels: {{- include "stacksift.labels" . | nindent 4 }}
+data:
+  nginx.conf: |
+    worker_processes auto;
+    error_log /dev/stderr warn;
+    pid /tmp/nginx.pid;
+    events { worker_connections 1024; }
+    stream {
+      server {
+        listen {{ .Values.minio.tls.proxyPort }} ssl;
+        ssl_certificate     /certs/tls.crt;
+        ssl_certificate_key /certs/tls.key;
+        proxy_pass 127.0.0.1:9000;
+      }
+    }
+{{- end }}

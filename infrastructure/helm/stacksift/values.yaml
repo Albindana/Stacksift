@@ -144,6 +144,23 @@ minio:
   resources:
     requests: { cpu: 50m, memory: 128Mi }
     limits:   { memory: 256Mi }
+  # TLS for the backup path ONLY (surgical — does not touch the app/ES, which keep
+  # using http://minio:9000). An nginx stream sidecar terminates TLS on :9443 and
+  # forwards to MinIO's localhost:9000; the `minio` Service exposes it on :443.
+  # pgBackRest (which can only speak HTTPS) connects to minio:443 with verify-tls=n.
+  # cert-manager issues a self-signed leaf (pgBackRest skips verification, so no CA
+  # distribution is needed). Default off; enabling adds an idle sidecar until
+  # backups are turned on (which also needs the data-dir topology fix — see
+  # zhelpers/DEPLOY/to-fix/minio-tls-plan.md §7).
+  tls:
+    enabled: false
+    create: true                 # create the cert-manager self-signed cert
+    proxyImage: nginx:1.27-alpine
+    proxyPort: 9443              # sidecar listen port (Service maps 443 → here)
+    certSecretName: minio-tls
+    resources:
+      requests: { cpu: 10m, memory: 24Mi }
+      limits:   { memory: 64Mi }
 
 elasticsearch:
   # SELF-HOSTED plain ES (not ECK — ECK forces security on, app has no ES auth).
