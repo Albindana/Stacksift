@@ -1,6 +1,6 @@
 # Backend — Current State
 
-> **Last updated:** 2026-06-03 (Helm chart WS4 hardening — gated NetworkPolicy / Prometheus / pgBackRest→MinIO / ES-ILM)
+> **Last updated:** 2026-06-03 (first deploy to project-07 + incident recovery — release v11 healthy; MinIO TLS sidecar + Gate-2 runbooks added; pgBackRest backups deferred pending MinIO TLS)
 > **Sprint:** Post-Sprint-3 — feature surface complete; Plans 04–08 (payments, data-lifecycle/GDPR, observability, realm-as-code, security) landed; now Docker-native.
 > **Health:** All four layers fully built out. Backend test suite on real Testcontainers (Postgres pgvector:pg16 + Keycloak) — last reported 209/209 green at CORE-FUNC, since extended by billing/GDPR/security work. The whole stack now boots and works **composed in Docker Compose** (see §"Docker integration" below).
 
@@ -102,6 +102,12 @@ namespaced, gated by values flags; on in `values-beta.yaml` except NetworkPolicy
 - `elasticsearch.lifecycle.enabled` — ES keystore initContainer + plain-http MinIO S3 client; app registers ILM + snapshot repo at startup. Secret `stacksift-es-s3-creds`.
 
 stanza-create/first-archive, ES repo register, Prometheus scrape, and the NetworkPolicy egress/ingress-nginx selector are **deploy-time** validated. See the chart README + `docs/runbooks/01-first-deploy.md`.
+
+**First-deploy learnings (2026-06-03, release v11 healthy):**
+- Each gated flag's **prereq Secret must exist before enabling it**, or the pod/hook fails (`CreateContainerConfigError`): `stacksift-es-s3-creds` (ES), `stacksift-pgbackrest` (backups). Both now created in `project-07`.
+- Prometheus CR needs `securityContext.fsGroup: 2000` or the Longhorn TSDB PVC is unwritable → crashloop. (helm's 3-way merge dropped the CR field once; verify it lands on the live object.)
+- **pgBackRest backups are OFF and blocked**: its S3 driver is HTTPS-only, the in-namespace MinIO is plain http. `fix/minio-tls` adds an opt-in nginx TLS sidecar (`minio.tls.enabled`) for the backup path only; backups also need a data-dir topology fix. See `zhelpers/DEPLOY/to-fix/minio-tls-plan.md`.
+- Runbooks: `docs/runbooks/01-first-deploy.md`, `04-incident-response.md`, `09-keycloak-admin.md`. CI: `docker-build` workflow takes `workflow_dispatch(domain, extra_tag, invite_only)` to build the `:dmdailydeals` FE/marketing images.
 
 ## Domain Entity Contract
 
