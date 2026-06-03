@@ -87,7 +87,35 @@ postgres:
   storage: 15Gi
   storageClass: longhorn
   backups:
-    enabled: false        # Gate 2: WAL archiving OFF (no pgBackRest stanza). Gate 3: enable.
+    # true → keeps the baked archive_mode=on (the postgres.yaml command override
+    # that forces archive_mode=off only renders when this is false), and renders
+    # the pgBackRest stanza-create Job (Helm hook) + the full/diff backup CronJobs.
+    # Requires the pre-created `secretName` Secret. The repo is the in-namespace
+    # MinIO bucket `stacksift-pg-backup`. stanza-create + first archive are
+    # verified at deploy-time (DEPLOY/10 + docs/runbooks/01).
+    #
+    # ⚠️ PREREQUISITE: MinIO must serve TLS. pgBackRest's S3 driver only speaks
+    # HTTPS (no plain-http option; verify-tls=n only skips cert verification), so
+    # against the default plain-http MinIO stanza-create fails with
+    # "TLS error: wrong version number". Give MinIO a cert before enabling.
+    enabled: false
+    secretName: stacksift-pgbackrest   # holds: access-key, secret-key, cipher-pass
+    s3:
+      endpoint: minio:9000
+      bucket: stacksift-pg-backup
+      region: us-east-1
+      uriStyle: path
+      verifyTls: "n"      # in-namespace MinIO is plain http
+    retention:
+      full: 4
+      diff: 14
+      archive: 14
+    schedule:
+      full: "0 2 * * 0"   # Sunday 02:00 UTC
+      diff: "0 2 * * 1-6"  # Mon–Sat 02:00 UTC
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits:   { memory: 1Gi }
   resources:
     requests: { cpu: 250m, memory: 512Mi }
     limits:   { memory: 1Gi }
@@ -116,6 +144,23 @@ minio:
   resources:
     requests: { cpu: 50m, memory: 128Mi }
     limits:   { memory: 256Mi }
+  # TLS for the backup path ONLY (surgical — does not touch the app/ES, which keep
+  # using http://minio:9000). An nginx stream sidecar terminates TLS on :9443 and
+  # forwards to MinIO's localhost:9000; the `minio` Service exposes it on :443.
+  # pgBackRest (which can only speak HTTPS) connects to minio:443 with verify-tls=n.
+  # cert-manager issues a self-signed leaf (pgBackRest skips verification, so no CA
+  # distribution is needed). Default off; enabling adds an idle sidecar until
+  # backups are turned on (which also needs the data-dir topology fix — see
+  # zhelpers/DEPLOY/to-fix/minio-tls-plan.md §7).
+  tls:
+    enabled: false
+    create: true                 # create the cert-manager self-signed cert
+    proxyImage: nginx:1.27-alpine
+    proxyPort: 9443              # sidecar listen port (Service maps 443 → here)
+    certSecretName: minio-tls
+    resources:
+      requests: { cpu: 10m, memory: 24Mi }
+      limits:   { memory: 64Mi }
 
 elasticsearch:
   # SELF-HOSTED plain ES (not ECK — ECK forces security on, app has no ES auth).
@@ -123,6 +168,14 @@ elasticsearch:
   storage: 15Gi
   storageClass: longhorn
   heap: 1g
+  lifecycle:
+    # true → an initContainer loads the S3 keys into the ES keystore and the S3
+    # client is pointed at MinIO (http); the app's EsLifecycleBootstrap then
+    # registers the ILM policies + the `stacksift-es-backup` snapshot repo at
+    # startup. false → plain ES (indices auto-create, no ILM/snapshots).
+    # Repo register validates only against live ES+MinIO (deploy-time).
+    enabled: false
+    s3SecretName: stacksift-es-s3-creds   # keys: s3.client.default.access_key/secret_key
   resources:
     requests: { cpu: 500m, memory: 1Gi }
     limits:   { memory: 2Gi }
@@ -144,6 +197,37 @@ migrate:
   enabled: true
   backoffLimit: 4
 
+# ── NetworkPolicy (namespaced; off by default — enable AFTER the app is up) ────
+networkPolicy:
+  # Calico is the CNI. When enabled: default-deny ingress for every pod, then
+  # allow (a) all intra-namespace pod-to-pod and (b) ingress-nginx → the web tier.
+  # Ship this AFTER first stand-up so a wrong selector can't lock you out
+  # (zhelpers/DEPLOY/04 §6). Egress is NOT restricted here (the cluster may run a
+  # GlobalNetworkPolicy for that — deploy-time concern).
+  enabled: false
+  # Namespace the ingress controller runs in — its pods are the only
+  # cross-namespace source allowed to reach the web tier. The
+  # kubernetes.io/metadata.name label is auto-applied to every namespace.
+  ingressControllerNamespace: ingress-nginx
+
 # ── Observability (optional; off by default for first stand-up) ────────────────
 serviceMonitor:
-  enabled: false          # set true if a Prometheus (operator) will scrape this ns
+  enabled: false          # legacy single api ServiceMonitor toggle (kept for compat)
+
+# Minimal in-namespace Prometheus (Prometheus-Operator is available cluster-wide).
+# When enabled: a namespaced Prometheus CR + its RBAC, ServiceMonitors for the
+# api and rabbitmq, and a PrometheusRule with the 4 Gate-2 alerts. Grafana/Loki/
+# Tempo are deferred to bucket B (first stand-up survives on `kubectl logs`).
+prometheus:
+  enabled: false
+  retention: 7d
+  storage: 5Gi            # PVC for the Prometheus TSDB
+  storageClass: longhorn
+  scrapeInterval: 30s
+  resources:
+    requests: { cpu: 100m, memory: 384Mi }
+    limits:   { memory: 768Mi }
+  # Enable only if a postgres-exporter sidecar/Deployment exposing :9187 exists.
+  postgresExporter:
+    enabled: false
+    port: 9187

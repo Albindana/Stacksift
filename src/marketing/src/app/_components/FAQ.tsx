@@ -23,7 +23,7 @@ const ENTRIES: readonly QA[] = [
   },
   {
     q: "Can I delete my data?",
-    a: "Yes. Account deletion hard-deletes all rows, ES indices, and S3 objects. No tombstones.",
+    a: "Yes. Deleting your account starts a 30-day grace period — you get a one-time restore token in case it was a mistake. After the grace window we hard-delete your organisation’s rows, Elasticsearch indices, and S3 objects. Two exceptions are kept for their legal retention floors with the identifying fields anonymised: audit events (365 days) and Stripe billing records (7 years).",
   },
 ];
 

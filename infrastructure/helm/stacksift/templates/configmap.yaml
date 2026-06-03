@@ -11,9 +11,12 @@ data:
   Database__RlsRoleSwitching: "true"
   # --- data stores (internal service DNS) ---
   Elasticsearch__Uri: "http://elasticsearch:9200"
-  # Gate 2: skip ILM/snapshot bootstrap (needs an ES S3 keystore). Logs still flow
-  # (indices auto-create). Enable in Gate 3 with the keystore initContainer.
-  Elasticsearch__Lifecycle__Enabled: "false"
+  # ILM + S3 snapshot bootstrap. When enabled, the ES keystore initContainer
+  # loads the S3 keys and the snapshot repo points at the in-namespace MinIO.
+  Elasticsearch__Lifecycle__Enabled: {{ .Values.elasticsearch.lifecycle.enabled | quote }}
+  {{- if .Values.elasticsearch.lifecycle.enabled }}
+  Elasticsearch__Lifecycle__SnapshotRepository__Endpoint: "minio:9000"
+  {{- end }}
   RabbitMq__Host: "rabbitmq"
   RabbitMq__VirtualHost: "/"
   RabbitMq__Username: "stacksift"

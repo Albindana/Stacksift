@@ -1,7 +1,8 @@
-{{- if .Values.serviceMonitor.enabled }}
-{{/* Prometheus Operator ServiceMonitor for the API /metrics endpoint. Only takes
-     effect if a Prometheus (cluster-shared or namespaced) selects this namespace
-     + these labels. See zhelpers/DEPLOY/08. */}}
+{{- if or .Values.serviceMonitor.enabled .Values.prometheus.enabled }}
+{{/* Prometheus Operator ServiceMonitor for the API /metrics endpoint. Scraped by
+     the namespaced Prometheus CR (observability.yaml) or any cluster Prometheus
+     selecting this namespace + label. The relabeling pins job=stacksift-api so
+     the ported PrometheusRule alert exprs match. See zhelpers/DEPLOY/08. */}}
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -13,5 +14,8 @@ spec:
   endpoints:
     - port: http
       path: /metrics
-      interval: 30s
+      interval: {{ .Values.prometheus.scrapeInterval | default "30s" }}
+      relabelings:
+        - targetLabel: job
+          replacement: stacksift-api
 {{- end }}

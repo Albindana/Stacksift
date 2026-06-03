@@ -49,7 +49,8 @@ chart; it consumes the cluster's pre-installed **ECK** and **cert-manager**).
    (`smtp.resend.com:587`, STARTTLS, user `resend`, from `noreply@dmdailydeals.com`) from
    `smtp_*` vars sourced from `secrets.env` (`RESEND_API_KEY`). The Resend secret is never
    committed; dev stays on Mailpit.
-5. *(Only if `elasticsearch.snapshots.enabled=true`)* ES S3 creds for snapshots:
+5. *(Only if `elasticsearch.lifecycle.enabled=true`)* ES S3 creds for snapshots —
+   loaded into the ES keystore by an initContainer:
    ```bash
    MK=$(grep '^MINIO_ROOT_USER=' ~/.config/stacksift-deploy/secrets.env | cut -d= -f2-)
    MS=$(grep '^MINIO_ROOT_PASSWORD=' ~/.config/stacksift-deploy/secrets.env | cut -d= -f2-)
@@ -57,6 +58,20 @@ chart; it consumes the cluster's pre-installed **ECK** and **cert-manager**).
      --from-literal=s3.client.default.access_key="$MK" \
      --from-literal=s3.client.default.secret_key="$MS"
    ```
+6. *(Only if `postgres.backups.enabled=true`)* pgBackRest → MinIO creds. Reuses the
+   MinIO root creds for repo access plus a strong repo-encryption passphrase:
+   ```bash
+   MK=$(grep '^MINIO_ROOT_USER=' ~/.config/stacksift-deploy/secrets.env | cut -d= -f2-)
+   MS=$(grep '^MINIO_ROOT_PASSWORD=' ~/.config/stacksift-deploy/secrets.env | cut -d= -f2-)
+   CP=$(grep '^PGBACKREST_REPO1_CIPHER_PASS=' ~/.config/stacksift-deploy/secrets.env | cut -d= -f2-)
+   kubectl -n project-07 create secret generic stacksift-pgbackrest \
+     --from-literal=access-key="$MK" \
+     --from-literal=secret-key="$MS" \
+     --from-literal=cipher-pass="$CP"
+   ```
+   The `stacksift-pgbackrest-stanza-create` Helm hook then creates the `stacksift`
+   stanza on first deploy; the full/diff CronJobs back up to `stacksift-pg-backup`.
+   stanza-create + first WAL archive are verified at deploy-time (runbook 01).
 
 ## Install / upgrade
 ```bash
@@ -88,9 +103,23 @@ marketing: `NEXT_PUBLIC_APP_BASE_URL=https://app.dmdailydeals.com`. Push as tag 
   the migrator runs as `stacksift_owner` via `ConnectionStrings__MigrationsConnection`;
   trusted background jobs/consumers `SET ROLE` to the owner for cross-org work. Keycloak
   still shares the `stacksift` DB on the bootstrap superuser (dedicated DB is Gate 3).
-- **WAL archiving OFF** (`postgres.backups.enabled=false`) for Gate 2.
 - **Elasticsearch security/http-TLS OFF** to match the app's plain-http ES client.
-- **No Loki/Tempo** at Gate 2 → console logs only (`kubectl logs`).
+- **No Grafana/Loki/Tempo** at Gate 2 (bucket B) → first stand-up survives on `kubectl logs`.
+
+## Optional hardening (WS4 — all namespaced, gated by values flags)
+`values-beta.yaml` turns on the in-cluster hardening that's safe from the start;
+`networkPolicy` ships **after** the app is verified up.
+
+| Flag | Default | Beta | What it renders |
+|---|---|---|---|
+| `prometheus.enabled` | false | **true** | namespaced Prometheus CR + RBAC, api + rabbitmq ServiceMonitors, `PrometheusRule` with the 4 Gate-2 alerts. Needs the Prometheus-Operator CRDs. |
+| `postgres.backups.enabled` | false | **true** | keeps `archive_mode=on`, renders the pgBackRest `stanza-create` hook Job + full/diff CronJobs → MinIO `stacksift-pg-backup`. Needs the `stacksift-pgbackrest` Secret (prereq 6). |
+| `elasticsearch.lifecycle.enabled` | false | **true** | ES keystore initContainer + plain-http MinIO S3 client; app registers ILM + the `stacksift-es-backup` repo at startup. Needs `stacksift-es-s3-creds` (prereq 5). |
+| `networkPolicy.enabled` | false | false | default-deny ingress + intra-ns allow + ingress-nginx→web. **Apply post-stand-up:** `helm upgrade … --set networkPolicy.enabled=true`. |
+
+Deploy-time validation (DEPLOY/10 + runbook 01): stanza-create + first WAL archive,
+ES repo register, Prometheus actually scraping, and the NetworkPolicy
+ingress-nginx `namespaceSelector` + cluster egress.
 
 ## Uninstall
 `helm uninstall stacksift -n project-07` removes workloads. **PVCs persist**

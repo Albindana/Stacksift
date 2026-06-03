@@ -1,0 +1,54 @@
+{{- if .Values.networkPolicy.enabled }}
+{{/* Default-deny ingress + the intra-namespace allow set (zhelpers/DEPLOY/04 §6).
+     Namespaced only — no GlobalNetworkPolicy. Egress is intentionally NOT
+     restricted here (the cluster may own an egress GlobalNetworkPolicy; the
+     OpenAI/Stripe/Resend/GHCR egress allow is a deploy-time concern). Enable
+     this AFTER the app is verified up so a wrong selector can't lock you out. */}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  labels: {{- include "stacksift.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+---
+{{/* Allow every pod in this namespace to reach every other pod in it. Covers
+     app → datastores (postgres/redis/rabbitmq/elasticsearch/minio), the
+     migrate/stanza-create/backup Jobs → postgres/minio, and prometheus →
+     metrics ports, without enumerating every source/port pair. */}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-intra-namespace
+  labels: {{- include "stacksift.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {}
+---
+{{/* Allow the ingress controller (cross-namespace) to reach the public web
+     tier. The ingress-nginx namespaceSelector + the cluster egress policy are
+     verified at deploy-time (zhelpers/DEPLOY/00 §5.5). */}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-nginx-to-web
+  labels: {{- include "stacksift.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: stacksift
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values: [api, frontend, marketing, keycloak{{ if .Values.minio.publicIngress }}, minio{{ end }}]
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.ingressControllerNamespace | quote }}
+{{- end }}

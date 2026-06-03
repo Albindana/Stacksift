@@ -42,6 +42,24 @@ on:
       - 'src/backend/StackSift.MigrationRunner/**'
       - 'infrastructure/docker/postgres/**'
 
+  # Manual builds for a specific public domain (frontend + marketing bake
+  # NEXT_PUBLIC_* at build time). Used to produce the dmdailydeals.com beta
+  # images: domain=dmdailydeals.com, extra_tag=dmdailydeals, invite_only=true.
+  workflow_dispatch:
+    inputs:
+      domain:
+        description: "Public base domain for NEXT_PUBLIC_* (e.g. dmdailydeals.com)"
+        default: stacksift.com
+        type: string
+      extra_tag:
+        description: "Extra image tag to push (e.g. dmdailydeals). Empty = none."
+        default: ""
+        type: string
+      invite_only:
+        description: "Bake NEXT_PUBLIC_REGISTRATION_INVITE_ONLY (closed beta = true)"
+        default: "false"
+        type: string
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -67,22 +85,26 @@ jobs:
             context: src/backend
             dockerfile: src/backend/StackSift.Api/Dockerfile
             build-args: ""
+          # Only the ARGs the frontend Dockerfile actually declares are baked here.
+          # KEYCLOAK_URL/APP_URL are runtime env (set in the chart's frontend.yaml),
+          # NOT build-time, so they are not passed. domain defaults to stacksift.com
+          # for branch pushes; workflow_dispatch overrides it (e.g. dmdailydeals.com).
           - service: frontend
             image: stacksift-frontend
             context: .
             dockerfile: src/frontend/Dockerfile
             build-args: |
-              NEXT_PUBLIC_API_URL=https://api.stacksift.com
+              NEXT_PUBLIC_API_URL=https://api.${{ github.event.inputs.domain || 'stacksift.com' }}
+              NEXT_PUBLIC_SIGNALR_HUB_URL=https://api.${{ github.event.inputs.domain || 'stacksift.com' }}/hubs/stacksift
               NEXT_PUBLIC_AUTH_MOCK=false
               NEXT_PUBLIC_SIGNALR_MOCK=false
-              NEXT_PUBLIC_KEYCLOAK_URL=https://auth.stacksift.com
-              NEXT_PUBLIC_APP_URL=https://app.stacksift.com
+              NEXT_PUBLIC_REGISTRATION_INVITE_ONLY=${{ github.event.inputs.invite_only || 'false' }}
           - service: marketing
             image: stacksift-marketing
             context: .
             dockerfile: src/marketing/Dockerfile
             build-args: |
-              NEXT_PUBLIC_APP_BASE_URL=https://app.stacksift.com
+              NEXT_PUBLIC_APP_BASE_URL=https://app.${{ github.event.inputs.domain || 'stacksift.com' }}
           - service: migrator
             image: stacksift-migrator
             context: src/backend
@@ -126,6 +148,7 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=raw,value=${{ github.event.inputs.extra_tag }},enable=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.extra_tag != '' }}
           labels: |
             org.opencontainers.image.title=${{ matrix.image }}
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
