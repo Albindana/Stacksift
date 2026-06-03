@@ -27,13 +27,14 @@ images:
 prometheus:
   enabled: true
 
-# pgBackRest → MinIO. true keeps archive_mode=on and renders the stanza-create
-# Job + full/diff CronJobs. Requires the pre-created `stacksift-pgbackrest` Secret
-# (access-key, secret-key, cipher-pass). stanza-create + first WAL archive are
-# verified at deploy-time (docs/runbooks/01-first-deploy.md).
+# pgBackRest → MinIO: DISABLED until MinIO serves TLS. pgBackRest's S3 driver
+# requires HTTPS and has no plain-http option (verify-tls=n only skips cert
+# *verification*); the in-namespace MinIO is plain http on :9000, so stanza-create
+# fails with "TLS error: wrong version number". Re-enable once MinIO has a cert
+# (then create the stacksift-pgbackrest Secret). Tracked as a follow-up.
 postgres:
   backups:
-    enabled: true
+    enabled: false
 
 # ES ILM + S3 snapshots → MinIO. Needs the `stacksift-es-s3-creds` Secret (keystore
 # initContainer). Repo register validates only against live ES+MinIO at deploy-time;

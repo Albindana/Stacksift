@@ -48,17 +48,10 @@ spec:
             - { name: PGDATA, value: /var/lib/postgresql/data/pgdata }
             {{- if .Values.postgres.backups.enabled }}
             # archive_mode=on (baked) → the overlay-rendered pgbackrest.conf needs
-            # the repo config so `archive-push` can reach MinIO. Secret refs are
-            # optional so a not-yet-created Secret degrades archiving (WAL retained)
-            # rather than blocking Postgres startup. Archiving succeeds once the
-            # stanza-create Job has run.
-            - { name: PGBACKREST_REPO1_TYPE, value: "s3" }
-            - { name: PGBACKREST_REPO1_S3_ENDPOINT, value: {{ .Values.postgres.backups.s3.endpoint | quote }} }
-            - { name: PGBACKREST_REPO1_S3_BUCKET, value: {{ .Values.postgres.backups.s3.bucket | quote }} }
-            - { name: PGBACKREST_REPO1_S3_REGION, value: {{ .Values.postgres.backups.s3.region | quote }} }
-            - { name: PGBACKREST_REPO1_S3_URI_STYLE, value: {{ .Values.postgres.backups.s3.uriStyle | quote }} }
-            - { name: PGBACKREST_REPO1_STORAGE_VERIFY_TLS, value: {{ .Values.postgres.backups.s3.verifyTls | quote }} }
-            - { name: PGBACKREST_PG1_PATH, value: "/var/lib/postgresql/data/pgdata" }
+            # the full repo config so `archive-push` can reach the repo. Secret refs
+            # are optional so a not-yet-created Secret degrades archiving (WAL
+            # retained) rather than blocking Postgres startup.
+            {{- include "stacksift.pgbackrest.repoEnv" . | nindent 12 }}
             - name: PGBACKREST_REPO1_S3_KEY
               valueFrom: { secretKeyRef: { name: {{ .Values.postgres.backups.secretName }}, key: access-key, optional: true } }
             - name: PGBACKREST_REPO1_S3_KEY_SECRET

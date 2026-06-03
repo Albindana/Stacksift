@@ -93,6 +93,11 @@ postgres:
     # Requires the pre-created `secretName` Secret. The repo is the in-namespace
     # MinIO bucket `stacksift-pg-backup`. stanza-create + first archive are
     # verified at deploy-time (DEPLOY/10 + docs/runbooks/01).
+    #
+    # ⚠️ PREREQUISITE: MinIO must serve TLS. pgBackRest's S3 driver only speaks
+    # HTTPS (no plain-http option; verify-tls=n only skips cert verification), so
+    # against the default plain-http MinIO stanza-create fails with
+    # "TLS error: wrong version number". Give MinIO a cert before enabling.
     enabled: false
     secretName: stacksift-pgbackrest   # holds: access-key, secret-key, cipher-pass
     s3:
