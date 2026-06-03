@@ -46,6 +46,19 @@ spec:
             - { name: STACKSIFT_OWNER_PASSWORD, valueFrom: { secretKeyRef: { name: {{ include "stacksift.appSecret" . }}, key: STACKSIFT_OWNER_PASSWORD } } }
             - { name: STACKSIFT_APP_PASSWORD,   valueFrom: { secretKeyRef: { name: {{ include "stacksift.appSecret" . }}, key: STACKSIFT_APP_PASSWORD } } }
             - { name: PGDATA, value: /var/lib/postgresql/data/pgdata }
+            {{- if .Values.postgres.backups.enabled }}
+            # archive_mode=on (baked) → the overlay-rendered pgbackrest.conf needs
+            # the full repo config so `archive-push` can reach the repo. Secret refs
+            # are optional so a not-yet-created Secret degrades archiving (WAL
+            # retained) rather than blocking Postgres startup.
+            {{- include "stacksift.pgbackrest.repoEnv" . | nindent 12 }}
+            - name: PGBACKREST_REPO1_S3_KEY
+              valueFrom: { secretKeyRef: { name: {{ .Values.postgres.backups.secretName }}, key: access-key, optional: true } }
+            - name: PGBACKREST_REPO1_S3_KEY_SECRET
+              valueFrom: { secretKeyRef: { name: {{ .Values.postgres.backups.secretName }}, key: secret-key, optional: true } }
+            - name: PGBACKREST_REPO1_CIPHER_PASS
+              valueFrom: { secretKeyRef: { name: {{ .Values.postgres.backups.secretName }}, key: cipher-pass, optional: true } }
+            {{- end }}
           ports:
             - { name: postgres, containerPort: 5432 }
           readinessProbe:

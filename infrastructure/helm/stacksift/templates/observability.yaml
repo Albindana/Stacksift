@@ -48,6 +48,13 @@ metadata:
 spec:
   replicas: 1
   serviceAccountName: stacksift-prometheus
+  # The operator applies no pod-level fsGroup by default, so the Longhorn TSDB
+  # PVC stays root-owned and the (non-root, readOnlyRootFilesystem) prometheus
+  # process can't write /prometheus → crashloop. fsGroup makes it group-writable.
+  securityContext:
+    runAsUser: 1000
+    runAsNonRoot: true
+    fsGroup: 2000
   retention: {{ .Values.prometheus.retention | quote }}
   scrapeInterval: {{ .Values.prometheus.scrapeInterval | quote }}
   resources: {{- toYaml .Values.prometheus.resources | nindent 4 }}
