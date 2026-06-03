@@ -144,6 +144,19 @@ migrate:
   enabled: true
   backoffLimit: 4
 
+# ── NetworkPolicy (namespaced; off by default — enable AFTER the app is up) ────
+networkPolicy:
+  # Calico is the CNI. When enabled: default-deny ingress for every pod, then
+  # allow (a) all intra-namespace pod-to-pod and (b) ingress-nginx → the web tier.
+  # Ship this AFTER first stand-up so a wrong selector can't lock you out
+  # (zhelpers/DEPLOY/04 §6). Egress is NOT restricted here (the cluster may run a
+  # GlobalNetworkPolicy for that — deploy-time concern).
+  enabled: false
+  # Namespace the ingress controller runs in — its pods are the only
+  # cross-namespace source allowed to reach the web tier. The
+  # kubernetes.io/metadata.name label is auto-applied to every namespace.
+  ingressControllerNamespace: ingress-nginx
+
 # ── Observability (optional; off by default for first stand-up) ────────────────
 serviceMonitor:
   enabled: false          # set true if a Prometheus (operator) will scrape this ns
