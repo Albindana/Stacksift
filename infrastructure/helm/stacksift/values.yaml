@@ -87,7 +87,30 @@ postgres:
   storage: 15Gi
   storageClass: longhorn
   backups:
-    enabled: false        # Gate 2: WAL archiving OFF (no pgBackRest stanza). Gate 3: enable.
+    # true → keeps the baked archive_mode=on (the postgres.yaml command override
+    # that forces archive_mode=off only renders when this is false), and renders
+    # the pgBackRest stanza-create Job (Helm hook) + the full/diff backup CronJobs.
+    # Requires the pre-created `secretName` Secret. The repo is the in-namespace
+    # MinIO bucket `stacksift-pg-backup`. stanza-create + first archive are
+    # verified at deploy-time (DEPLOY/10 + docs/runbooks/01).
+    enabled: false
+    secretName: stacksift-pgbackrest   # holds: access-key, secret-key, cipher-pass
+    s3:
+      endpoint: minio:9000
+      bucket: stacksift-pg-backup
+      region: us-east-1
+      uriStyle: path
+      verifyTls: "n"      # in-namespace MinIO is plain http
+    retention:
+      full: 4
+      diff: 14
+      archive: 14
+    schedule:
+      full: "0 2 * * 0"   # Sunday 02:00 UTC
+      diff: "0 2 * * 1-6"  # Mon–Sat 02:00 UTC
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits:   { memory: 1Gi }
   resources:
     requests: { cpu: 250m, memory: 512Mi }
     limits:   { memory: 1Gi }

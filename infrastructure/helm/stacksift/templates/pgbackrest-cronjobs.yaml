@@ -1,0 +1,65 @@
+{{- if .Values.postgres.backups.enabled }}
+{{/* pgBackRest backup CronJobs → MinIO (chart-templated replacement for the raw
+     infrastructure/k8s/backup-postgres-{full,diff}.yaml sketches). Full weekly,
+     diff daily. Both share the `stacksift` stanza created by the stanza-create
+     Job. The verified restore drill + off-site object-lock are bucket B. */}}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: stacksift-pgbackrest-full
+  labels: {{- include "stacksift.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.postgres.backups.schedule.full | quote }}
+  timeZone: "UTC"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels: {{- include "stacksift.selector" (dict "ctx" . "component" "pgbackrest-full") | nindent 12 }}
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: pgbackrest
+              image: {{ include "stacksift.postgresImage" . }}
+              imagePullPolicy: {{ .Values.images.pullPolicy }}
+              command:
+                - /bin/bash
+                - -c
+                - stacksift-pg-overlay.sh true && pgbackrest --stanza=stacksift --type=full --log-level-console=info backup
+              env: {{- include "stacksift.pgbackrest.env" . | nindent 16 }}
+              resources: {{- toYaml .Values.postgres.backups.resources | nindent 16 }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: stacksift-pgbackrest-diff
+  labels: {{- include "stacksift.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.postgres.backups.schedule.diff | quote }}
+  timeZone: "UTC"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels: {{- include "stacksift.selector" (dict "ctx" . "component" "pgbackrest-diff") | nindent 12 }}
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: pgbackrest
+              image: {{ include "stacksift.postgresImage" . }}
+              imagePullPolicy: {{ .Values.images.pullPolicy }}
+              command:
+                - /bin/bash
+                - -c
+                - stacksift-pg-overlay.sh true && pgbackrest --stanza=stacksift --type=diff --log-level-console=info backup
+              env: {{- include "stacksift.pgbackrest.env" . | nindent 16 }}
+              resources: {{- toYaml .Values.postgres.backups.resources | nindent 16 }}
+{{- end }}

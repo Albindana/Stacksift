@@ -49,7 +49,8 @@ chart; it consumes the cluster's pre-installed **ECK** and **cert-manager**).
    (`smtp.resend.com:587`, STARTTLS, user `resend`, from `noreply@dmdailydeals.com`) from
    `smtp_*` vars sourced from `secrets.env` (`RESEND_API_KEY`). The Resend secret is never
    committed; dev stays on Mailpit.
-5. *(Only if `elasticsearch.snapshots.enabled=true`)* ES S3 creds for snapshots:
+5. *(Only if `elasticsearch.lifecycle.enabled=true`)* ES S3 creds for snapshots —
+   loaded into the ES keystore by an initContainer:
    ```bash
    MK=$(grep '^MINIO_ROOT_USER=' ~/.config/stacksift-deploy/secrets.env | cut -d= -f2-)
    MS=$(grep '^MINIO_ROOT_PASSWORD=' ~/.config/stacksift-deploy/secrets.env | cut -d= -f2-)
@@ -57,6 +58,20 @@ chart; it consumes the cluster's pre-installed **ECK** and **cert-manager**).
      --from-literal=s3.client.default.access_key="$MK" \
      --from-literal=s3.client.default.secret_key="$MS"
    ```
+6. *(Only if `postgres.backups.enabled=true`)* pgBackRest → MinIO creds. Reuses the
+   MinIO root creds for repo access plus a strong repo-encryption passphrase:
+   ```bash
+   MK=$(grep '^MINIO_ROOT_USER=' ~/.config/stacksift-deploy/secrets.env | cut -d= -f2-)
+   MS=$(grep '^MINIO_ROOT_PASSWORD=' ~/.config/stacksift-deploy/secrets.env | cut -d= -f2-)
+   CP=$(grep '^PGBACKREST_REPO1_CIPHER_PASS=' ~/.config/stacksift-deploy/secrets.env | cut -d= -f2-)
+   kubectl -n project-07 create secret generic stacksift-pgbackrest \
+     --from-literal=access-key="$MK" \
+     --from-literal=secret-key="$MS" \
+     --from-literal=cipher-pass="$CP"
+   ```
+   The `stacksift-pgbackrest-stanza-create` Helm hook then creates the `stacksift`
+   stanza on first deploy; the full/diff CronJobs back up to `stacksift-pg-backup`.
+   stanza-create + first WAL archive are verified at deploy-time (runbook 01).
 
 ## Install / upgrade
 ```bash
