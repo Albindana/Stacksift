@@ -103,9 +103,23 @@ marketing: `NEXT_PUBLIC_APP_BASE_URL=https://app.dmdailydeals.com`. Push as tag 
   the migrator runs as `stacksift_owner` via `ConnectionStrings__MigrationsConnection`;
   trusted background jobs/consumers `SET ROLE` to the owner for cross-org work. Keycloak
   still shares the `stacksift` DB on the bootstrap superuser (dedicated DB is Gate 3).
-- **WAL archiving OFF** (`postgres.backups.enabled=false`) for Gate 2.
 - **Elasticsearch security/http-TLS OFF** to match the app's plain-http ES client.
-- **No Loki/Tempo** at Gate 2 → console logs only (`kubectl logs`).
+- **No Grafana/Loki/Tempo** at Gate 2 (bucket B) → first stand-up survives on `kubectl logs`.
+
+## Optional hardening (WS4 — all namespaced, gated by values flags)
+`values-beta.yaml` turns on the in-cluster hardening that's safe from the start;
+`networkPolicy` ships **after** the app is verified up.
+
+| Flag | Default | Beta | What it renders |
+|---|---|---|---|
+| `prometheus.enabled` | false | **true** | namespaced Prometheus CR + RBAC, api + rabbitmq ServiceMonitors, `PrometheusRule` with the 4 Gate-2 alerts. Needs the Prometheus-Operator CRDs. |
+| `postgres.backups.enabled` | false | **true** | keeps `archive_mode=on`, renders the pgBackRest `stanza-create` hook Job + full/diff CronJobs → MinIO `stacksift-pg-backup`. Needs the `stacksift-pgbackrest` Secret (prereq 6). |
+| `elasticsearch.lifecycle.enabled` | false | **true** | ES keystore initContainer + plain-http MinIO S3 client; app registers ILM + the `stacksift-es-backup` repo at startup. Needs `stacksift-es-s3-creds` (prereq 5). |
+| `networkPolicy.enabled` | false | false | default-deny ingress + intra-ns allow + ingress-nginx→web. **Apply post-stand-up:** `helm upgrade … --set networkPolicy.enabled=true`. |
+
+Deploy-time validation (DEPLOY/10 + runbook 01): stanza-create + first WAL archive,
+ES repo register, Prometheus actually scraping, and the NetworkPolicy
+ingress-nginx `namespaceSelector` + cluster egress.
 
 ## Uninstall
 `helm uninstall stacksift -n project-07` removes workloads. **PVCs persist**

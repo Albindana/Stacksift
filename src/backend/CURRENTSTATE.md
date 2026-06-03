@@ -1,6 +1,6 @@
 # Backend — Current State
 
-> **Last updated:** 2026-05-31 (Docker end-to-end integration)
+> **Last updated:** 2026-06-03 (Helm chart WS4 hardening — gated NetworkPolicy / Prometheus / pgBackRest→MinIO / ES-ILM)
 > **Sprint:** Post-Sprint-3 — feature surface complete; Plans 04–08 (payments, data-lifecycle/GDPR, observability, realm-as-code, security) landed; now Docker-native.
 > **Health:** All four layers fully built out. Backend test suite on real Testcontainers (Postgres pgvector:pg16 + Keycloak) — last reported 209/209 green at CORE-FUNC, since extended by billing/GDPR/security work. The whole stack now boots and works **composed in Docker Compose** (see §"Docker integration" below).
 
@@ -91,6 +91,17 @@ The stack now boots and works **composed in Docker**, not just as local dev proc
 | `KC_HOSTNAME` / `KC_HOSTNAME_BACKCHANNEL_DYNAMIC` | Keycloak container | Pin public issuer + email links; internal callers keep using `keycloak:8080`. |
 
 ---
+
+## Deployment (Helm chart — `infrastructure/helm/stacksift`)
+
+Gate-2 chart deploys all tiers to namespace `project-07`. **WS4 hardening** (all
+namespaced, gated by values flags; on in `values-beta.yaml` except NetworkPolicy):
+- `networkPolicy.enabled` — default-deny ingress + intra-ns allow + ingress-nginx→web (`templates/networkpolicy.yaml`); apply **after** stand-up.
+- `prometheus.enabled` — namespaced Prometheus CR + RBAC + api/rabbitmq ServiceMonitors + `PrometheusRule` (4 Gate-2 alerts), `templates/observability.yaml`. api SM relabels `job=stacksift-api`.
+- `postgres.backups.enabled` — pgBackRest → MinIO: `stanza-create` hook Job + full/diff CronJobs (`templates/pgbackrest-*.yaml`); keeps `archive_mode=on`. Secret `stacksift-pgbackrest`.
+- `elasticsearch.lifecycle.enabled` — ES keystore initContainer + plain-http MinIO S3 client; app registers ILM + snapshot repo at startup. Secret `stacksift-es-s3-creds`.
+
+stanza-create/first-archive, ES repo register, Prometheus scrape, and the NetworkPolicy egress/ingress-nginx selector are **deploy-time** validated. See the chart README + `docs/runbooks/01-first-deploy.md`.
 
 ## Domain Entity Contract
 
