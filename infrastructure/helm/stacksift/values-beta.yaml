@@ -13,14 +13,19 @@ certIssuer:
   useStaging: false
   email: verify@dmdailydeals.com
 
-# Pin to the current images. Rebuild + retag frontend/marketing for the domain
-# (see zhelpers/DEPLOY/06) then set their tags here.
+# Pin to the live images (what's deployed at rev 12+). Use IMMUTABLE sha tags —
+# never the mutable `:dmdailydeals` (IfNotPresent won't re-pull it, and a push
+# build can overwrite it with the wrong NEXT_PUBLIC_* domain).
+#   - api/migrator: develop-HEAD backend (RLS cutover + invite-only + email-verify).
+#   - frontend/marketing: the dmdailydeals.com-baked build from the docker-build
+#     workflow_dispatch (domain=dmdailydeals.com) — sha-af34045, NOT sha-469519e
+#     (469519e's FE/marketing were push-built with the stacksift.com default).
 images:
-  api:       { tag: sha-2cc40a3 }
-  migrator:  { tag: sha-2cc40a3 }
+  api:       { tag: sha-469519e }
+  migrator:  { tag: sha-469519e }
   postgres:  { tag: sha-2cc40a3 }
-  frontend:  { tag: dmdailydeals }
-  marketing: { tag: dmdailydeals }
+  frontend:  { tag: sha-af34045 }
+  marketing: { tag: sha-af34045 }
 
 # Minimal in-namespace Prometheus + the 4 Gate-2 alerts (needs Prometheus-Operator
 # CRDs, available on the cluster). Grafana/Loki deferred to bucket B.
