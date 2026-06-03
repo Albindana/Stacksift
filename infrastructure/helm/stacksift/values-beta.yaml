@@ -35,6 +35,14 @@ postgres:
   backups:
     enabled: true
 
+# ES ILM + S3 snapshots → MinIO. Needs the `stacksift-es-s3-creds` Secret (keystore
+# initContainer). Repo register validates only against live ES+MinIO at deploy-time;
+# set false for an absolute-minimal first stand-up (logs still flow, indices
+# auto-create without ILM).
+elasticsearch:
+  lifecycle:
+    enabled: true
+
 # NetworkPolicy stays OFF here — apply it only AFTER the app is verified up
 # (helm upgrade ... --set networkPolicy.enabled=true) so a wrong selector or the
 # unknown cluster egress policy can't lock you out (DEPLOY/04 §6, DEPLOY/00 §5.5).

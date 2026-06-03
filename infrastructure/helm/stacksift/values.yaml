@@ -146,6 +146,14 @@ elasticsearch:
   storage: 15Gi
   storageClass: longhorn
   heap: 1g
+  lifecycle:
+    # true → an initContainer loads the S3 keys into the ES keystore and the S3
+    # client is pointed at MinIO (http); the app's EsLifecycleBootstrap then
+    # registers the ILM policies + the `stacksift-es-backup` snapshot repo at
+    # startup. false → plain ES (indices auto-create, no ILM/snapshots).
+    # Repo register validates only against live ES+MinIO (deploy-time).
+    enabled: false
+    s3SecretName: stacksift-es-s3-creds   # keys: s3.client.default.access_key/secret_key
   resources:
     requests: { cpu: 500m, memory: 1Gi }
     limits:   { memory: 2Gi }
