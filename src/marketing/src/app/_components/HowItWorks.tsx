@@ -22,14 +22,14 @@ export default function HowItWorks() {
   return (
     <section
       id="how-it-works"
-      className="container-page py-24 border-t border-line"
+      className="container-page py-16 border-t border-line md:py-24"
     >
-      <h2 className="text-3xl md:text-4xl font-bold mb-12">How it works</h2>
+      <h2 className="text-3xl md:text-4xl font-bold mb-8 md:mb-12">How it works</h2>
       <ol className="grid md:grid-cols-3 gap-6">
         {STEPS.map((s) => (
           <li
             key={s.n}
-            className="rounded-xl bg-surface border border-line p-6"
+            className="rounded-lg bg-surface border border-line p-6"
           >
             <div className="text-low font-mono text-2xl">
               {String(s.n).padStart(2, "0")}

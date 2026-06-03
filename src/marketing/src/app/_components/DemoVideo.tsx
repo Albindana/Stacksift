@@ -2,13 +2,12 @@ import DemoVideoModal from "./DemoVideoModal";
 
 export default function DemoVideo() {
   return (
-    <section id="demo" className="container-page py-24 border-t border-line">
+    <section id="demo" className="container-page py-16 border-t border-line md:py-24">
       <h2 className="text-3xl md:text-4xl font-bold">
         90 seconds. The whole pitch.
       </h2>
       <p className="mt-3 text-muted max-w-2xl">
-        A real local stack. Real OpenAI call. No edits, no cuts. Captions on by
-        default; transcript below.
+        A real local stack. Real OpenAI call. No edits, no cuts.
       </p>
       <div className="mt-8">
         <DemoVideoModal />
@@ -21,7 +20,9 @@ export default function DemoVideo() {
           <span>Transcript</span>
         </summary>
         <div className="mt-4 text-muted leading-relaxed">
-          Transcript pending — drops in once the Loom recording is finalised.
+          The demo walks through connecting a local service, triggering a
+          cascading incident, and using the AI analysis to identify the
+          root-cause log line without leaving the incident view.
         </div>
       </details>
     </section>

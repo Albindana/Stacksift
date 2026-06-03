@@ -3,7 +3,7 @@ export default function HeroMockup() {
     <div
       role="img"
       aria-label="StackSift incident detail panel showing an AI root-cause analysis in progress."
-      className="rounded-2xl border border-line bg-surface p-6 shadow-2xl"
+      className="min-w-0 overflow-hidden rounded-lg border border-line bg-surface p-5 shadow-xl md:p-6"
     >
       <div className="flex items-center gap-2 mb-4">
         <span className="px-2 py-0.5 rounded text-xs font-mono bg-critical/15 text-critical border border-critical/30">
@@ -20,21 +20,21 @@ export default function HeroMockup() {
       </div>
       <div className="text-sm text-muted mt-1">5 alerts · started 2 min ago</div>
 
-      <div className="mt-5 space-y-2">
-        <div className="flex items-center gap-3 text-xs font-mono">
-          <span className="text-muted">02:14:33</span>
-          <span className="text-critical">ERROR</span>
-          <span className="truncate">NullReferenceException at UserService.cs:142</span>
+      <div className="mt-5 min-w-0 space-y-2">
+        <div className="flex min-w-0 items-center gap-3 text-xs font-mono">
+          <span className="shrink-0 text-muted">02:14:33</span>
+          <span className="shrink-0 text-critical">ERROR</span>
+          <span className="min-w-0 truncate">NullReferenceException at UserService.cs:142</span>
         </div>
-        <div className="flex items-center gap-3 text-xs font-mono">
-          <span className="text-muted">02:14:33</span>
-          <span className="text-high">WARN</span>
-          <span className="truncate">Redis connection timeout after 30000ms</span>
+        <div className="flex min-w-0 items-center gap-3 text-xs font-mono">
+          <span className="shrink-0 text-muted">02:14:33</span>
+          <span className="shrink-0 text-high">WARN</span>
+          <span className="min-w-0 truncate">Redis connection timeout after 30000ms</span>
         </div>
-        <div className="flex items-center gap-3 text-xs font-mono">
-          <span className="text-muted">02:14:34</span>
-          <span className="text-critical">ERROR</span>
-          <span className="truncate">Database query exceeded timeout (pool exhausted)</span>
+        <div className="flex min-w-0 items-center gap-3 text-xs font-mono">
+          <span className="shrink-0 text-muted">02:14:34</span>
+          <span className="shrink-0 text-critical">ERROR</span>
+          <span className="min-w-0 truncate">Database query exceeded timeout (pool exhausted)</span>
         </div>
       </div>
 

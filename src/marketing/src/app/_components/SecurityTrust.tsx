@@ -2,28 +2,28 @@ type Point = { title: string; body: string };
 
 const POINTS: readonly Point[] = [
   {
-    title: "Multi-tenant by construction",
-    body: "Per-org Postgres rows, per-org Elasticsearch indices, per-org S3 key prefixes, per-org SignalR groups. You cannot see another tenant’s data even if a bug tries.",
+    title: "EU-hosted log storage",
+    body: "Application data, databases, and log indexes run on Hetzner in Germany. Log data is isolated per organisation.",
   },
   {
-    title: "Auth handled by Keycloak",
-    body: "Industry-standard OIDC + PKCE. Tokens never touch JavaScript — only an HTTP-only session cookie.",
+    title: "No server agent",
+    body: "Send logs through open-source SDKs or plain HTTP. You do not install a privileged daemon or give StackSift shell access.",
   },
   {
-    title: "Our SDKs are open source",
-    body: "Read the code before you ship it. StackSift.Serilog.Sink (NuGet) and @stacksift/winston-transport (npm) — both MIT-licensed on GitHub.",
+    title: "HTTP-only sessions",
+    body: "Authentication is handled through OIDC + PKCE, and browser sessions use HTTP-only cookies rather than JavaScript-readable tokens.",
   },
 ];
 
 export default function SecurityTrust() {
   return (
-    <section className="container-page py-24 border-t border-line">
+    <section className="container-page py-16 border-t border-line md:py-24">
       <h2 className="text-3xl md:text-4xl font-bold">Trust, by design.</h2>
       <div className="mt-10 grid md:grid-cols-3 gap-6">
         {POINTS.map((p) => (
           <div
             key={p.title}
-            className="p-6 bg-surface border border-line rounded-xl"
+            className="p-6 bg-surface border border-line rounded-lg"
           >
             <div className="text-lg font-semibold">{p.title}</div>
             <p className="mt-2 text-muted">{p.body}</p>

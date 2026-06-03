@@ -14,15 +14,37 @@ const ROWS: readonly Row[] = [
 
 export default function DatadogComparison() {
   return (
-    <section className="container-page py-24 border-t border-line">
+    <section className="container-page py-16 border-t border-line md:py-24">
       <h2 className="text-3xl md:text-4xl font-bold">
         Why not just use Datadog?
       </h2>
       <p className="mt-3 text-muted max-w-2xl">
         Because you’re not their customer. We’re not theirs either.
       </p>
-      <div className="mt-10 overflow-x-auto">
-        <table className="w-full text-left border border-line rounded-xl overflow-hidden min-w-[600px]">
+      <div className="mt-8 grid gap-4 md:hidden">
+        {ROWS.map(([label, dd, ss]) => (
+          <div key={label} className="rounded-lg border border-line bg-surface p-4">
+            <div className="text-sm font-semibold">{label}</div>
+            <div className="mt-4 grid gap-3">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-muted">
+                  Datadog / New Relic
+                </div>
+                <div className="mt-1 text-sm text-muted">{dd}</div>
+              </div>
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-low">
+                  StackSift
+                </div>
+                <div className="mt-1 text-sm text-primary">{ss}</div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-10 hidden overflow-x-auto md:block">
+        <table className="w-full text-left border border-line rounded-lg overflow-hidden min-w-[600px]">
           <thead className="bg-surface">
             <tr>
               <th scope="col" className="p-4" />

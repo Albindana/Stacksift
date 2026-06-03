@@ -5,8 +5,8 @@ const COLS: readonly Column[] = [
   {
     title: "Product",
     links: [
-      { label: "Features", href: "#how-it-works" },
-      { label: "Pricing", href: "#pricing" },
+      { label: "Features", href: "/#how-it-works" },
+      { label: "Pricing", href: "/#pricing" },
       {
         label: "Changelog",
         href: "https://github.com/drdtrn/StackSift/releases",
@@ -62,7 +62,7 @@ export default function Footer() {
   const commit = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? "dev";
 
   return (
-    <footer className="border-t border-line py-16">
+    <footer className="border-t border-line py-12 md:py-16">
       <div className="container-page grid grid-cols-2 md:grid-cols-5 gap-8">
         <div className="col-span-2 md:col-span-1">
           <div className="text-lg font-bold">StackSift</div>
@@ -80,7 +80,7 @@ export default function Footer() {
                 <li key={l.label}>
                   <a
                     href={l.href}
-                    className="text-sm hover:text-primary"
+                    className="block py-1 text-sm hover:text-primary"
                     {...(isExternal(l.href)
                       ? { target: "_blank", rel: "noopener noreferrer" }
                       : {})}
