@@ -30,6 +30,31 @@ spec:
     spec:
       securityContext:
         fsGroup: 1000
+      {{- if .Values.elasticsearch.lifecycle.enabled }}
+      initContainers:
+        # Build the ES keystore with the S3 snapshot creds (the 8.x image bundles
+        # repository-s3). The keystore is written to a shared emptyDir and mounted
+        # into the main container's config dir via subPath.
+        - name: keystore
+          image: {{ .Values.elasticsearch.image }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              elasticsearch-keystore create
+              printf '%s' "$S3_ACCESS_KEY" | elasticsearch-keystore add --stdin --force s3.client.default.access_key
+              printf '%s' "$S3_SECRET_KEY" | elasticsearch-keystore add --stdin --force s3.client.default.secret_key
+              cp /usr/share/elasticsearch/config/elasticsearch.keystore /keystore/elasticsearch.keystore
+          env:
+            - name: S3_ACCESS_KEY
+              valueFrom: { secretKeyRef: { name: {{ .Values.elasticsearch.lifecycle.s3SecretName }}, key: s3.client.default.access_key } }
+            - name: S3_SECRET_KEY
+              valueFrom: { secretKeyRef: { name: {{ .Values.elasticsearch.lifecycle.s3SecretName }}, key: s3.client.default.secret_key } }
+          volumeMounts:
+            - { name: keystore, mountPath: /keystore }
+      {{- end }}
       containers:
         - name: elasticsearch
           image: {{ .Values.elasticsearch.image }}
@@ -41,6 +66,11 @@ spec:
             - { name: node.store.allow_mmap, value: "false" }
             - { name: ES_JAVA_OPTS, value: "-Xms{{ .Values.elasticsearch.heap }} -Xmx{{ .Values.elasticsearch.heap }}" }
             - { name: cluster.name, value: stacksift }
+            {{- if .Values.elasticsearch.lifecycle.enabled }}
+            # Point the default S3 client at the plain-http in-namespace MinIO.
+            - { name: s3.client.default.protocol, value: "http" }
+            - { name: s3.client.default.endpoint, value: "minio:9000" }
+            {{- end }}
           ports:
             - { name: http, containerPort: 9200 }
           readinessProbe:
@@ -53,6 +83,13 @@ spec:
           resources: {{- toYaml .Values.elasticsearch.resources | nindent 12 }}
           volumeMounts:
             - { name: data, mountPath: /usr/share/elasticsearch/data }
+            {{- if .Values.elasticsearch.lifecycle.enabled }}
+            - { name: keystore, mountPath: /usr/share/elasticsearch/config/elasticsearch.keystore, subPath: elasticsearch.keystore }
+            {{- end }}
+      {{- if .Values.elasticsearch.lifecycle.enabled }}
+      volumes:
+        - { name: keystore, emptyDir: {} }
+      {{- end }}
   volumeClaimTemplates:
     - metadata:
         name: data
