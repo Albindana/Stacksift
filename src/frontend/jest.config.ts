@@ -12,7 +12,7 @@ const config: Config = {
   testPathIgnorePatterns: ["/node_modules/", "/.next/", "/e2e/"],
   passWithNoTests: false,
   transform: {
-    "^.+\\.(ts|tsx)$": ["ts-jest", { tsconfig: { jsx: "react-jsx" } }],
+    "^.+\\.(ts|tsx)$": ["ts-jest", { tsconfig: "./tsconfig.test.json" }],
   },
   collectCoverageFrom: [
     "src/**/*.{ts,tsx}",
