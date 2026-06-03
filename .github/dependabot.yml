@@ -1,65 +1,116 @@
+# Tuned 2026-06-02: monthly cadence, one grouped PR per ecosystem, and
+# major-version bumps ignored (opt-in via `@dependabot` or a temporary config
+# edit). This keeps the security value of automated minor/patch updates without
+# the first-run flood of one-PR-per-dependency. Majors (eslint 10, TS 6,
+# Elasticsearch 9, Keycloak 3, FluentAssertions 8, etc.) are handled by hand.
 version: 2
 updates:
   # ── Backend (.NET) ──────────────────────────────────────────────────────
   - package-ecosystem: nuget
     directory: /src/backend
     schedule:
-      interval: weekly
-      day: monday
-    open-pull-requests-limit: 10
+      interval: monthly
+    open-pull-requests-limit: 5
     groups:
-      microsoft:
-        patterns: ["Microsoft.*", "System.*"]
-      observability:
-        patterns: ["Serilog*", "OpenTelemetry*", "prometheus-net*"]
+      backend:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   # ── Dashboard (Next.js / pnpm) ──────────────────────────────────────────
   - package-ecosystem: npm
     directory: /src/frontend
     schedule:
-      interval: weekly
-      day: monday
-    open-pull-requests-limit: 10
+      interval: monthly
+    open-pull-requests-limit: 5
     groups:
-      react:
-        patterns: ["react", "react-dom", "@types/react*"]
-      next:
-        patterns: ["next", "@next/*", "eslint-config-next"]
-      tanstack:
-        patterns: ["@tanstack/*"]
+      frontend:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   # ── Marketing site ──────────────────────────────────────────────────────
   - package-ecosystem: npm
     directory: /src/marketing
     schedule:
-      interval: weekly
-      day: monday
-    open-pull-requests-limit: 5
+      interval: monthly
+    open-pull-requests-limit: 3
+    groups:
+      marketing:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   # ── Winston transport SDK ───────────────────────────────────────────────
   - package-ecosystem: npm
     directory: /sdks/winston-transport
     schedule:
-      interval: weekly
-      day: monday
-    open-pull-requests-limit: 5
+      interval: monthly
+    open-pull-requests-limit: 3
+    groups:
+      winston-transport:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   # ── Dockerfiles ─────────────────────────────────────────────────────────
   - package-ecosystem: docker
     directory: /src/backend/StackSift.Api
     schedule:
-      interval: weekly
+      interval: monthly
+    open-pull-requests-limit: 3
+    groups:
+      docker-api:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: docker
     directory: /src/frontend
     schedule:
-      interval: weekly
+      interval: monthly
+    open-pull-requests-limit: 3
+    groups:
+      docker-frontend:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: docker
     directory: /infrastructure/docker/postgres
     schedule:
-      interval: weekly
+      interval: monthly
+    open-pull-requests-limit: 3
+    groups:
+      docker-postgres:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   # ── GitHub Actions ──────────────────────────────────────────────────────
+  # Action bumps are usually tagged as majors (e.g. checkout v4 → v6); with
+  # majors ignored these resume only when re-enabled by hand.
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
