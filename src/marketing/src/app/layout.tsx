@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import PlausibleProvider from "next-plausible";
+import Footer from "./_components/Footer";
+import Header from "./_components/Header";
 import "./globals.css";
 
 const inter = Inter({
@@ -46,26 +48,10 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: [
-    { media: "(prefers-color-scheme: dark)", color: "#0F1117" },
-    { media: "(prefers-color-scheme: light)", color: "#FFFFFF" },
-  ],
+  themeColor: "#FFFFFF",
   width: "device-width",
   initialScale: 1,
 };
-
-const themeScript = `
-(function() {
-  try {
-    var stored = localStorage.getItem('ss-marketing-theme');
-    var prefersLight = window.matchMedia('(prefers-color-scheme: light)').matches;
-    var theme = stored || (prefersLight ? 'light' : 'dark');
-    document.documentElement.classList.add(theme === 'light' ? 'light' : 'dark');
-  } catch (e) {
-    document.documentElement.classList.add('dark');
-  }
-})();
-`;
 
 const analyticsEnabled = process.env.NEXT_PUBLIC_ANALYTICS_ENABLED === "true";
 
@@ -73,12 +59,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html
       lang="en"
-      suppressHydrationWarning
       className={`${inter.variable} ${jetbrainsMono.variable}`}
     >
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
-      </head>
       <body>
         <PlausibleProvider
           domain="stacksift.io"
@@ -94,7 +76,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           >
             Skip to content
           </a>
+          <Header />
           {children}
+          <Footer />
         </PlausibleProvider>
       </body>
     </html>

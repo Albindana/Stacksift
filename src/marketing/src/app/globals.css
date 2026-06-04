@@ -1,32 +1,9 @@
 @import "tailwindcss";
 
-@custom-variant dark (&:where(.dark, .dark *));
-
 /* DESIGN TOKENS — kept in lockstep with src/frontend/src/app/globals.css.
    When you edit a value here, edit it there too. */
 
 :root {
-  --canvas: #0F1117;
-  --surface: #1A1D27;
-  --elevated: #21253A;
-  --line: #2E3348;
-  --primary: #F1F3F9;
-  --muted: #8B90A7;
-
-  --critical: #EF4444;
-  --high: #F97316;
-  --medium: #EAB308;
-  --low: #3B82F6;
-  --info: #6B7280;
-
-  --critical-bg: rgba(239, 68, 68, 0.15);
-  --high-bg: rgba(249, 115, 22, 0.15);
-  --medium-bg: rgba(234, 179, 8, 0.15);
-  --low-bg: rgba(59, 130, 246, 0.15);
-  --info-bg: rgba(107, 114, 128, 0.15);
-}
-
-.light {
   --canvas: #FFFFFF;
   --surface: #F8F9FC;
   --elevated: #F1F3F9;
@@ -71,6 +48,7 @@ body {
   color: var(--primary);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  overflow-x: clip;
 }
 
 *,
@@ -85,6 +63,7 @@ body {
   max-width: 1200px;
   margin-inline: auto;
   padding-inline: 1.5rem;
+  width: 100%;
 }
 
 @media (min-width: 768px) {
