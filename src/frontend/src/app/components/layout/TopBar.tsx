@@ -2,7 +2,6 @@
 
 import { Menu } from 'lucide-react';
 import { useUIStore } from '@/app/hooks/useUIStore';
-import { useNotificationStore } from '@/app/hooks/useNotificationStore';
 import { Breadcrumb } from './Breadcrumb';
 import { OrgSwitcher } from './OrgSwitcher';
 import { NotificationBell } from './NotificationBell';
@@ -26,7 +25,6 @@ import { ConnectionStatusIndicator } from './ConnectionStatusIndicator';
 
 export function TopBar() {
   const { toggleMobileDrawer } = useUIStore();
-  const unread = useNotificationStore((s) => s.unread);
 
   return (
     <header
@@ -52,7 +50,7 @@ export function TopBar() {
       {/* Right group: org switcher + notifications + theme + avatar */}
       <div className="flex shrink-0 items-center gap-1">
         <OrgSwitcher />
-        <NotificationBell count={unread} />
+        <NotificationBell />
         <ConnectionStatusIndicator />
         <ThemeToggle />
         <UserAvatarMenu />
