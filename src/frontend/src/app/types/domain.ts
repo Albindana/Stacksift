@@ -139,6 +139,7 @@ export interface AiAnalysis {
   confidenceScore: number | null;
   createdAt: string;
   completedAt: string | null;
+  contextLogCount: number;
 }
 
 export interface User {

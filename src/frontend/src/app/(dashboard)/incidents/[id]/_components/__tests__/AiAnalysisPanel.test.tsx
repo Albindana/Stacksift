@@ -18,6 +18,7 @@ function buildAnalysis(overrides: Partial<AiAnalysis> = {}): AiAnalysis {
     confidenceScore: 0.91,
     createdAt: '2026-05-19T00:00:00+00:00',
     completedAt: '2026-05-19T00:00:08+00:00',
+    contextLogCount: 5,
     ...overrides,
   };
 }
@@ -115,6 +116,32 @@ describe('AiAnalysisPanel', () => {
     expect(screen.getByText('Eviction policy set to noeviction.')).toBeInTheDocument();
     expect(screen.getByText('Set maxmemory-policy to allkeys-lru')).toBeInTheDocument();
     expect(screen.getByText('91%')).toBeInTheDocument();
+  });
+
+  it('warns when a completed analysis ran without log context', () => {
+    render(
+      <AiAnalysisPanel
+        analysisId={ANALYSIS_ID}
+        aiAnalysis={buildAnalysis({ contextLogCount: 0 })}
+        isTriggeringAnalysis={false}
+        onTrigger={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/analyzed without log context/i)).toBeInTheDocument();
+  });
+
+  it('does not warn when the analysis had log context', () => {
+    render(
+      <AiAnalysisPanel
+        analysisId={ANALYSIS_ID}
+        aiAnalysis={buildAnalysis({ contextLogCount: 12 })}
+        isTriggeringAnalysis={false}
+        onTrigger={jest.fn()}
+      />,
+    );
+
+    expect(screen.queryByText(/analyzed without log context/i)).not.toBeInTheDocument();
   });
 
   it('shows the retry action when the analysis failed', async () => {

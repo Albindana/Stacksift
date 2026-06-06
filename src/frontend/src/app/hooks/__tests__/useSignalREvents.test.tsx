@@ -73,6 +73,7 @@ function makeAnalysis(): AiAnalysis {
     confidenceScore: 0.9,
     createdAt: new Date().toISOString(),
     completedAt: new Date().toISOString(),
+    contextLogCount: 0,
   };
 }
 

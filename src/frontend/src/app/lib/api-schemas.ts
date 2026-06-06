@@ -138,6 +138,8 @@ export const AiAnalysisSchema = z.object({
   confidenceScore: z.number().min(0).max(1).nullable(),
   createdAt: z.string().datetime({ offset: true }),
   completedAt: z.string().datetime({ offset: true }).nullable(),
+  // Defaulted for responses produced before the field existed (mock mode, caches).
+  contextLogCount: z.number().int().min(0).default(0),
 });
 
 export const UserSchema = z.object({

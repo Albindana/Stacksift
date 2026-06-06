@@ -176,6 +176,16 @@ public sealed class EsLifecycleBootstrap(
         await PutJsonAsync(http, "/_ilm/policy/stacksift-logs-team", teamPolicy, ct);
     }
 
+    // Explicit version of the text + .keyword multi-field shape that dynamic
+    // mapping produced on the first indexed document. Keeping the exact same
+    // shape means queries targeting .keyword subfields work identically on
+    // pre-template (dynamic) and post-template indices — no reindex required.
+    private static object TextWithKeyword() => new
+    {
+        type = "text",
+        fields = new { keyword = new { type = "keyword", ignore_above = 256 } },
+    };
+
     private static Task PutIndexTemplateAsync(HttpClient http, LifecycleOptions options, CancellationToken ct) =>
         PutJsonAsync(http, "/_index_template/stacksift-logs", new
         {
@@ -188,6 +198,24 @@ public sealed class EsLifecycleBootstrap(
                     ["index.lifecycle.name"] = options.DefaultPolicy,
                     ["index.number_of_shards"] = options.NumberOfShards,
                     ["index.number_of_replicas"] = options.NumberOfReplicas,
+                },
+                mappings = new
+                {
+                    properties = new Dictionary<string, object>
+                    {
+                        ["id"] = TextWithKeyword(),
+                        ["projectId"] = TextWithKeyword(),
+                        ["logSourceId"] = TextWithKeyword(),
+                        ["organizationId"] = TextWithKeyword(),
+                        ["level"] = TextWithKeyword(),
+                        ["message"] = TextWithKeyword(),
+                        ["traceId"] = TextWithKeyword(),
+                        ["spanId"] = TextWithKeyword(),
+                        ["serviceName"] = TextWithKeyword(),
+                        ["hostName"] = TextWithKeyword(),
+                        ["timestamp"] = new { type = "date" },
+                        // metadata stays dynamically mapped — customers control its shape
+                    }
                 }
             }
         }, ct);

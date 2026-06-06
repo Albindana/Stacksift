@@ -15,10 +15,15 @@ public sealed class AlertFiredConsumer(
     AppDbContext db,
     IAlertHubService alertHub,
     IBackgroundJobClient backgroundJobs,
+    ICacheService cache,
     ILogger<AlertFiredConsumer> logger,
     ICurrentOrgProvider orgProvider)
     : IConsumer<AlertFiredMessage>
 {
+    // A firing rule can produce several alerts within minutes (alert storms).
+    // One immediate email per rule per cooldown window is enough.
+    private static readonly TimeSpan EmailCooldown = TimeSpan.FromMinutes(15);
+
     public async Task Consume(ConsumeContext<AlertFiredMessage> context)
     {
         using var systemScope = orgProvider.EnterSystemScope(nameof(AlertFiredConsumer));
@@ -51,8 +56,19 @@ public sealed class AlertFiredConsumer(
 
         if (alert.Severity is AlertSeverity.Critical or AlertSeverity.High)
         {
-            backgroundJobs.Enqueue<ImmediateAlertEmailJob>(
-                j => j.ExecuteAsync(alert.Id, CancellationToken.None));
+            var cooldownKey = $"alert-email-cooldown:{alert.AlertRuleId}";
+            if (await cache.GetAsync<string>(cooldownKey, ct) is not null)
+            {
+                logger.LogInformation(
+                    "Alert {AlertId} skipped immediate email — rule {RuleId} is in its {Cooldown} cooldown window",
+                    alert.Id, alert.AlertRuleId, EmailCooldown);
+            }
+            else
+            {
+                await cache.SetAsync(cooldownKey, "1", EmailCooldown, ct);
+                backgroundJobs.Enqueue<ImmediateAlertEmailJob>(
+                    j => j.ExecuteAsync(alert.Id, CancellationToken.None));
+            }
         }
 
         logger.LogInformation(

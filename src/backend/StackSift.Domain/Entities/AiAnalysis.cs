@@ -15,4 +15,8 @@ public class AiAnalysis : AuditableEntity<Guid>
     public float[]? Embedding { get; set; }
     public double? ConfidenceScore { get; set; }
     public DateTimeOffset? CompletedAt { get; set; }
+
+    /// <summary>How many log entries were available as LLM context. 0 on a
+    /// completed analysis means it ran blind — surfaced as a warning in the UI.</summary>
+    public int ContextLogCount { get; set; }
 }

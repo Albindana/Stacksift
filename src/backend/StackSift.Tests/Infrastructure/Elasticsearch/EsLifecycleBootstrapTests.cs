@@ -46,6 +46,25 @@ public sealed class EsLifecycleBootstrapTests
         paths.Should().Contain("/_ilm/policy/stacksift-logs-indie");
         paths.Should().Contain("/_ilm/policy/stacksift-logs-team");
         paths.Should().Contain("/_index_template/stacksift-logs");
+
+        // The template must carry explicit mappings mirroring the dynamic
+        // text + .keyword shape, so .keyword term queries keep working on
+        // both pre-template and post-template indices.
+        var template = captured.Single(c => c.Path == "/_index_template/stacksift-logs");
+        using var doc = JsonDocument.Parse(template.Body);
+        var properties = doc.RootElement
+            .GetProperty("template")
+            .GetProperty("mappings")
+            .GetProperty("properties");
+
+        foreach (var field in new[] { "projectId", "logSourceId", "level", "message" })
+        {
+            properties.GetProperty(field).GetProperty("type").GetString().Should().Be("text");
+            properties.GetProperty(field)
+                .GetProperty("fields").GetProperty("keyword").GetProperty("type")
+                .GetString().Should().Be("keyword");
+        }
+        properties.GetProperty("timestamp").GetProperty("type").GetString().Should().Be("date");
     }
 
     [Fact]
