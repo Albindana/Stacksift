@@ -33,6 +33,7 @@ public sealed class RunAiAnalysisJob(
 {
     private const double DedupeCosineDistance = 0.05;
     private const int LogContextLimit = 50;
+    private static readonly TimeSpan LogSearchWindow = TimeSpan.FromMinutes(5);
 
     [AutomaticRetry(Attempts = 5, DelaysInSeconds = new[] { 30, 120, 300, 600, 1800 })]
     public async Task ExecuteAsync(Guid analysisId, CancellationToken ct)
@@ -82,9 +83,13 @@ public sealed class RunAiAnalysisJob(
             }
             else
             {
-                logger.LogInformation(
-                    "RunAiAnalysisJob: {Id} — no logs found in ES window, proceeding without embedding",
-                    analysisId);
+                logger.LogWarning(
+                    "RunAiAnalysisJob: {Id} — no logs found in ES window for org {OrgId}, project {ProjectId}, window {From:O}..{To:O} — proceeding without embedding",
+                    analysisId,
+                    incident.OrganizationId,
+                    incident.ProjectId,
+                    incident.StartedAt - LogSearchWindow,
+                    incident.StartedAt + LogSearchWindow);
             }
 
             analysis.RelevantLogIds = contributingIds;
@@ -146,9 +151,8 @@ public sealed class RunAiAnalysisJob(
     private async Task<List<LogEntryDocument>> SearchLogsAsync(Incident incident, CancellationToken ct)
     {
         var index = $"stacksift-logs-{incident.OrganizationId}";
-        var window = TimeSpan.FromMinutes(5);
-        var from = incident.StartedAt - window;
-        var to = incident.StartedAt + window;
+        var from = incident.StartedAt - LogSearchWindow;
+        var to = incident.StartedAt + LogSearchWindow;
 
         var request = new SearchRequest(index)
         {
@@ -174,7 +178,9 @@ public sealed class RunAiAnalysisJob(
                         {
                             Term = new TermQuery
                             {
-                                Field = new Field("projectId"),
+                                // Dynamic mapping stores projectId as analyzed text; the
+                                // .keyword subfield is required for exact UUID matches.
+                                Field = new Field("projectId.keyword"),
                                 Value = FieldValue.String(incident.ProjectId.ToString())
                             }
                         },
