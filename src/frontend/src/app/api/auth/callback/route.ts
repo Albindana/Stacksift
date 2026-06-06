@@ -33,7 +33,10 @@ type TokenResponseBody = {
 // ---------------------------------------------------------------------------
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const { searchParams, origin } = new URL(request.url);
+  const { searchParams } = new URL(request.url);
+  // Public base URL for redirects back into the app — the request origin is
+  // the container bind address (0.0.0.0:3000) in standalone deployments.
+  const origin = authConfig.appUrl;
   const routeLogger = logger.child({
     route: '/api/auth/callback',
     correlationId: request.headers.get('x-correlation-id') ?? crypto.randomUUID(),
