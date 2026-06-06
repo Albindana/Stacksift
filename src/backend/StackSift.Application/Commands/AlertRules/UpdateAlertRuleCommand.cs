@@ -16,7 +16,8 @@ public record UpdateAlertRuleCommand(
     int WindowMinutes,
     LogLevel? LogLevel,
     string? Pattern,
-    bool IsActive
+    bool IsActive,
+    AlertSeverity? Severity
 ) : IRequest<AlertRuleDto>;
 
 public class UpdateAlertRuleCommandValidator : AbstractValidator<UpdateAlertRuleCommand>
@@ -30,6 +31,9 @@ public class UpdateAlertRuleCommandValidator : AbstractValidator<UpdateAlertRule
             .GreaterThan(0)
             .When(x => x.Condition == AlertRuleCondition.Threshold)
             .WithMessage("Threshold must be greater than 0 when condition is Threshold.");
+        RuleFor(x => x.Severity)
+            .IsInEnum()
+            .When(x => x.Severity.HasValue);
     }
 }
 
@@ -51,6 +55,7 @@ public class UpdateAlertRuleCommandHandler(IUnitOfWork uow, ICurrentUserService 
         rule.LogLevel = request.LogLevel;
         rule.Pattern = request.Pattern;
         rule.IsActive = request.IsActive;
+        rule.Severity = request.Severity ?? rule.Severity;
 
         await uow.AlertRules.UpdateAsync(rule, ct);
         await uow.SaveChangesAsync(ct);

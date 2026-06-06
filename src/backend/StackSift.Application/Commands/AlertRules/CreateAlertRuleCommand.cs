@@ -16,7 +16,8 @@ public record CreateAlertRuleCommand(
     decimal? Threshold,
     int WindowMinutes,
     LogLevel? LogLevel,
-    string? Pattern
+    string? Pattern,
+    AlertSeverity? Severity
 ) : IRequest<AlertRuleDto>;
 
 public class CreateAlertRuleCommandValidator : AbstractValidator<CreateAlertRuleCommand>
@@ -30,6 +31,9 @@ public class CreateAlertRuleCommandValidator : AbstractValidator<CreateAlertRule
             .GreaterThan(0)
             .When(x => x.Condition == AlertRuleCondition.Threshold)
             .WithMessage("Threshold must be greater than 0 when condition is Threshold.");
+        RuleFor(x => x.Severity)
+            .IsInEnum()
+            .When(x => x.Severity.HasValue);
     }
 }
 
@@ -55,6 +59,7 @@ public class CreateAlertRuleCommandHandler(IUnitOfWork uow, ICurrentUserService 
             WindowMinutes = request.WindowMinutes,
             LogLevel = request.LogLevel,
             Pattern = request.Pattern,
+            Severity = request.Severity ?? AlertSeverity.Medium,
             IsActive = true
         };
 

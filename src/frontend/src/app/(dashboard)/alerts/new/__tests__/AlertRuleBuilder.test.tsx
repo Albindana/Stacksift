@@ -326,7 +326,60 @@ describe('AlertRuleBuilder — Step 3: Review', () => {
             threshold: 5,
             windowMinutes: 15,
           }),
+          severity: 'medium',
         }),
+      );
+    });
+  });
+});
+
+describe('AlertRuleBuilder — Severity', () => {
+  async function goToStep2() {
+    renderBuilder();
+    fireEvent.change(screen.getByRole('textbox', { name: /rule name/i }), {
+      target: { value: 'High error rate' },
+    });
+    fireEvent.change(screen.getByRole('combobox', { name: /project/i }), {
+      target: { value: 'proj-001' },
+    });
+    await advanceStep();
+    await waitFor(() => expect(screen.getByText(/define what triggers/i)).toBeInTheDocument());
+  }
+
+  it('shows all 4 severity options with Medium selected by default', async () => {
+    await goToStep2();
+
+    expect(screen.getByRole('radio', { name: 'Low' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Medium' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('radio', { name: 'High' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Critical' })).toBeInTheDocument();
+  });
+
+  it('explains that Critical/High severities send an immediate email', async () => {
+    await goToStep2();
+
+    expect(
+      screen.getByText(/critical and high alerts also send an immediate email/i),
+    ).toBeInTheDocument();
+  });
+
+  it('selecting High carries through review and into the submit payload', async () => {
+    await goToStep2();
+
+    fireEvent.click(screen.getByRole('radio', { name: 'High' }));
+    await waitFor(() =>
+      expect(screen.getByRole('radio', { name: 'High' })).toHaveAttribute('aria-checked', 'true'));
+
+    await advanceStep();
+    await waitFor(() => expect(screen.getByText(/review & create/i)).toBeInTheDocument());
+
+    expect(screen.getByText('High')).toBeInTheDocument();
+    expect(screen.getByText(/sends an immediate email to org admins/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /create rule/i }));
+    await waitFor(() => {
+      expect(mockCreateAlertRule).toHaveBeenCalledWith(
+        expect.objectContaining({ severity: 'high' }),
       );
     });
   });

@@ -2,6 +2,7 @@
 
 import type { UseFormReturn } from 'react-hook-form';
 import type { AlertRuleFormInput, AlertCondition } from '@/app/lib/schemas/alert-rule';
+import { ALERT_SEVERITY_LABELS } from '@/app/lib/schemas/alert-rule';
 import { useProjects } from '@/app/hooks/queries';
 
 // ---------------------------------------------------------------------------
@@ -76,6 +77,19 @@ export function AlertReviewStep({ form }: Props) {
         <Row
           label="Condition"
           value={getConditionSummary(values.condition)}
+        />
+        <Row
+          label="Severity"
+          value={
+            <>
+              {ALERT_SEVERITY_LABELS[values.severity]}
+              {(values.severity === 'high' || values.severity === 'critical') && (
+                <span className="ml-2 text-xs text-zinc-500 dark:text-zinc-400">
+                  (sends an immediate email to org admins)
+                </span>
+              )}
+            </>
+          }
         />
       </div>
     </div>

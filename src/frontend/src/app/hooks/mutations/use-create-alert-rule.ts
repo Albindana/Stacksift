@@ -6,7 +6,7 @@ import type { AxiosError } from 'axios';
 import { useToastStore } from '@/app/hooks/useToastStore';
 import { queryKeys } from '@/app/lib/query-keys';
 import type { AlertRuleFormInput } from '@/app/lib/schemas/alert-rule';
-import type { AlertRule, AlertRuleCondition, LogLevel } from '@/app/types';
+import type { AlertRule, AlertRuleCondition, AlertSeverity, LogLevel } from '@/app/types';
 import { apiClient } from '@/app/lib/api-client';
 import { AlertRuleSchema } from '@/app/lib/api-schemas';
 import { useApiError } from '@/app/hooks/useApiError';
@@ -19,6 +19,7 @@ interface AlertRuleBody {
   windowMinutes: number;
   logLevel: LogLevel | null;
   pattern: string | null;
+  severity: AlertSeverity;
 }
 
 interface UpdateAlertRuleInput extends AlertRuleBody {
@@ -30,6 +31,7 @@ function mapAlertRuleFormToBackend(input: AlertRuleFormInput): AlertRuleBody {
   const base = {
     projectId: input.projectId,
     name: input.name,
+    severity: input.severity,
   };
 
   switch (input.condition.type) {

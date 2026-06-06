@@ -76,7 +76,7 @@ describe('AlertRulesView', () => {
     expect(screen.getByText('High Error Rate')).toBeInTheDocument();
     expect(screen.getByText('threshold')).toBeInTheDocument();
     expect(screen.getByText('5')).toBeInTheDocument();
-    expect(screen.getByText('medium')).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: /severity for high error rate/i })).toHaveValue('medium');
   });
 
   it('renders an empty state for a project with no rules', () => {
