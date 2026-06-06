@@ -18,11 +18,13 @@ interface IncidentDetailViewProps {
 export function IncidentDetailView({ id }: IncidentDetailViewProps) {
   const { data: incident, isLoading: incidentLoading } = useIncident(id);
   const { data: alerts = [], isLoading: alertsLoading } = useIncidentAlerts(id);
-  const { data: aiAnalysis } = useAiAnalysis(incident?.aiAnalysisId ?? null);
   const { data: similar = [], isLoading: similarLoading } = useSimilarIncidents(id);
 
   const updateStatus = useUpdateIncidentStatus();
   const triggerAnalysis = useTriggerAiAnalysis();
+
+  const analysisId = incident?.aiAnalysisId ?? triggerAnalysis.data?.id ?? null;
+  const { data: aiAnalysis } = useAiAnalysis(analysisId);
 
   if (incidentLoading) {
     return (
@@ -66,7 +68,7 @@ export function IncidentDetailView({ id }: IncidentDetailViewProps) {
         {/* Right column: AI analysis + similar incidents */}
         <div className="flex flex-col gap-6">
           <AiAnalysisPanel
-            incident={incident}
+            analysisId={analysisId}
             aiAnalysis={aiAnalysis}
             isTriggeringAnalysis={triggerAnalysis.isPending}
             onTrigger={() => triggerAnalysis.mutate({ incidentId: id })}
