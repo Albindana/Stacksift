@@ -84,3 +84,20 @@ The legacy SSO redirect path exists in the app, but no broker is configured yet.
 - Management/health is on port **9000**: `/health/live`, `/health/ready`, `/health/started`.
 - If Keycloak won't start, check `KC_DB_URL` reachability (shared Postgres) and the realm import logs
   (`kubectl logs <kc-pod>`); a malformed `stacksift-realm` Secret fails the import.
+
+## Realm SMTP (verify-email + forgot-password)
+
+Keycloak sends its own emails (verify-email, reset-credentials) through the **realm SMTP
+config** — NOT through the app's MailKit/Resend path. If `smtpServer` is empty, those flows
+fail silently (registration verify mails never arrive; password reset is dead).
+
+- **Beta (project-07):** configured 2026-06-06 against Resend (`smtp.resend.com:2465`, ssl,
+  user `resend`, password = the `Smtp__Password` API key from `stacksift-secrets`,
+  from `noreply@dmdailydeals.com`). Also baked into the `stacksift-realm` Secret so
+  re-imports keep it. Local dev realm JSON points at Mailpit.
+- **Verify:** Realm settings → Email → Test connection, or
+  `kcadm.sh update users/<id>/send-verify-email -r stacksift -n`.
+- **Gotcha:** `kcadm.sh get realms/stacksift --fields smtpServer` always prints `{}` —
+  the fields filter is broken for map attributes. Use the full realm GET and grep.
+- **Rotation:** new Resend key → update `stacksift-secrets` (app), the realm via
+  kcadm/console (live), and the `stacksift-realm` Secret (import baseline).

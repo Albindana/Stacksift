@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -35,11 +35,17 @@ const ROLE_OPTIONS: Array<{
   },
 ];
 
-export default function RegisterPage() {
+function RegisterForm() {
   const router = useRouter();
+  const search = useSearchParams();
   const queryClient = useQueryClient();
   const { addToast } = useToastStore();
   const [submitting, setSubmitting] = useState(false);
+
+  // Invitation token carried from the invite email's register link. Proves
+  // inbox ownership — the backend creates the account pre-verified, so the
+  // user skips the verification round-trip entirely.
+  const inviteToken = search.get('invite') ?? '';
 
   const {
     register,
@@ -56,6 +62,7 @@ export default function RegisterPage() {
       role: 'viewer',
       captchaToken: '',
       honeypot: '',
+      invitationToken: inviteToken,
     },
   });
 
@@ -112,6 +119,26 @@ export default function RegisterPage() {
       }
       const result = parsed.data;
 
+      // Unverified accounts cannot complete a login (realm policy), so don't
+      // attempt the auto sign-in — route to the verification screen instead,
+      // and be honest when the verification email could not be sent.
+      if (!result.emailVerified) {
+        if (result.verificationEmailSent) {
+          addToast({
+            variant: 'success',
+            message: 'Account created — check your inbox to verify your email, then sign in.',
+          });
+        } else {
+          addToast({
+            variant: 'warning',
+            message:
+              "Account created, but we couldn't send the verification email. Request a new one below.",
+          });
+        }
+        router.replace(`/verify-email?email=${encodeURIComponent(values.email)}`);
+        return;
+      }
+
       const loginResponse = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -139,6 +166,7 @@ export default function RegisterPage() {
       } else {
         router.replace('/waiting');
       }
+      return;
     } catch {
       addToast({
         variant: 'error',
@@ -186,6 +214,13 @@ export default function RegisterPage() {
           {...register('password')}
         />
       </div>
+
+      {inviteToken ? (
+        <p className="rounded-lg border border-blue-500/40 bg-blue-500/10 p-3 text-xs text-muted">
+          You&apos;re registering with an invitation. Use the email address the
+          invitation was sent to — your account will be verified automatically.
+        </p>
+      ) : null}
 
       {inviteOnly ? (
         <p className="rounded-lg border border-line bg-elevated p-3 text-xs text-muted">
@@ -249,5 +284,14 @@ export default function RegisterPage() {
         .
       </p>
     </form>
+  );
+}
+
+export default function RegisterPage() {
+  // useSearchParams requires a Suspense boundary during prerender.
+  return (
+    <Suspense fallback={null}>
+      <RegisterForm />
+    </Suspense>
   );
 }

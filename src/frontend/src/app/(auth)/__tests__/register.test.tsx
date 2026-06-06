@@ -8,6 +8,7 @@ const mockAddToast = jest.fn();
 
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ replace: mockReplace, push: jest.fn() }),
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 jest.mock('@/app/hooks/useToastStore', () => ({
@@ -75,7 +76,34 @@ describe('RegisterPage', () => {
     global.fetch = realFetch;
   });
 
-  it('owner happy-path → /onboarding', async () => {
+  it('owner happy-path (unverified) → /verify-email, no auto-login', async () => {
+    const fetchMock = captureFetch(({ url }) => {
+      if (url === '/api/auth/register') {
+        return jsonResponse(201, {
+          userId: '11111111-1111-1111-1111-111111111111',
+          email: 'new@example.com',
+          role: 'owner',
+          organizationId: null,
+          attachedViaInvitation: false,
+          emailVerified: false,
+          verificationEmailSent: true,
+        });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    renderPage();
+    await fillAndSubmit('owner');
+
+    await waitFor(() =>
+      expect(mockReplace).toHaveBeenCalledWith('/verify-email?email=new%40example.com'));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(mockAddToast).toHaveBeenCalledWith(
+      expect.objectContaining({ variant: 'success' }),
+    );
+  });
+
+  it('verified owner (token) → auto-login → /onboarding', async () => {
     captureFetch(({ url }) => {
       if (url === '/api/auth/register') {
         return jsonResponse(201, {
@@ -84,6 +112,8 @@ describe('RegisterPage', () => {
           role: 'owner',
           organizationId: null,
           attachedViaInvitation: false,
+          emailVerified: true,
+          verificationEmailSent: false,
         });
       }
       if (url === '/api/auth/login') {
@@ -98,7 +128,33 @@ describe('RegisterPage', () => {
     await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/onboarding'));
   });
 
-  it('viewer happy-path → /waiting', async () => {
+  it('verification email failure → /verify-email + warning toast', async () => {
+    captureFetch(({ url }) => {
+      if (url === '/api/auth/register') {
+        return jsonResponse(201, {
+          userId: '11111111-1111-1111-1111-111111111111',
+          email: 'new@example.com',
+          role: 'viewer',
+          organizationId: null,
+          attachedViaInvitation: false,
+          emailVerified: false,
+          verificationEmailSent: false,
+        });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    renderPage();
+    await fillAndSubmit('viewer');
+
+    await waitFor(() =>
+      expect(mockReplace).toHaveBeenCalledWith('/verify-email?email=new%40example.com'));
+    expect(mockAddToast).toHaveBeenCalledWith(
+      expect.objectContaining({ variant: 'warning' }),
+    );
+  });
+
+  it('viewer happy-path (unverified) → /verify-email', async () => {
     captureFetch(({ url }) => {
       if (url === '/api/auth/register') {
         return jsonResponse(201, {
@@ -107,6 +163,8 @@ describe('RegisterPage', () => {
           role: 'viewer',
           organizationId: null,
           attachedViaInvitation: false,
+          emailVerified: false,
+          verificationEmailSent: true,
         });
       }
       return jsonResponse(200, { ok: true });
@@ -115,7 +173,8 @@ describe('RegisterPage', () => {
     renderPage();
     await fillAndSubmit('viewer');
 
-    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/waiting'));
+    await waitFor(() =>
+      expect(mockReplace).toHaveBeenCalledWith('/verify-email?email=new%40example.com'));
   });
 
   it('invitation match → / + success toast', async () => {
@@ -127,6 +186,8 @@ describe('RegisterPage', () => {
           role: 'admin',
           organizationId: '00000000-0000-0000-0000-000000000001',
           attachedViaInvitation: true,
+          emailVerified: true,
+          verificationEmailSent: false,
         });
       }
       return jsonResponse(200, { ok: true });

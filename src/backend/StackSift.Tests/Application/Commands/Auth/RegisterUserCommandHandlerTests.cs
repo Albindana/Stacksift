@@ -312,4 +312,133 @@ public class RegisterUserCommandHandlerTests
         _invitations.Verify(r => r.FindPendingByEmailAsync(
             "alice@example.com", It.IsAny<CancellationToken>()), Times.Once);
     }
+
+    private Invitation SetupTokenInvitation(
+        string email, string token,
+        DateTimeOffset? acceptedAt = null, DateTimeOffset? expiresAt = null)
+    {
+        var invitation = new Invitation
+        {
+            Id = Guid.NewGuid(),
+            OrganizationId = Guid.NewGuid(),
+            Email = email,
+            Token = token,
+            Role = UserRole.Member,
+            InvitedByUserId = Guid.NewGuid(),
+            AcceptedAt = acceptedAt,
+            ExpiresAt = expiresAt ?? DateTimeOffset.UtcNow.AddDays(7),
+        };
+        _invitations.Setup(r => r.FindByTokenAsync(token, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(invitation);
+        return invitation;
+    }
+
+    [Fact]
+    public async Task VerificationEmailFailure_ReportsSentFalse_WithoutFailingRegistration()
+    {
+        var newId = Guid.NewGuid();
+        SetupNoPendingInvitation();
+        SetupKeycloakCreate(newId);
+        _kc.Setup(k => k.SendVerifyEmailAsync(newId, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("smtp not configured"));
+
+        var result = await NewHandler().Handle(
+            new RegisterUserCommand("alice@example.com", "Passw0rd!23", "Alice", IsOwner: false), default);
+
+        result.UserId.Should().Be(newId);
+        result.EmailVerified.Should().BeFalse();
+        result.VerificationEmailSent.Should().BeFalse();
+        _uow.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task VerificationEmailSuccess_ReportsSentTrue()
+    {
+        var newId = Guid.NewGuid();
+        SetupNoPendingInvitation();
+        SetupKeycloakCreate(newId);
+
+        var result = await NewHandler().Handle(
+            new RegisterUserCommand("alice@example.com", "Passw0rd!23", "Alice", IsOwner: false), default);
+
+        result.EmailVerified.Should().BeFalse();
+        result.VerificationEmailSent.Should().BeTrue();
+        _kc.Verify(k => k.SendVerifyEmailAsync(newId, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task InvitationToken_MatchingEmail_CreatesVerifiedUser_AndSkipsVerifyEmail()
+    {
+        var newId = Guid.NewGuid();
+        SetupNoPendingInvitation();
+        SetupKeycloakCreate(newId);
+        var invitation = SetupTokenInvitation("alice@example.com", "tok-123");
+
+        var result = await NewHandler(inviteOnly: true).Handle(
+            new RegisterUserCommand("Alice@Example.com", "Passw0rd!23", "Alice", IsOwner: false,
+                InvitationToken: "tok-123"), default);
+
+        result.EmailVerified.Should().BeTrue();
+        result.VerificationEmailSent.Should().BeFalse();
+        result.AttachedViaInvitation.Should().BeTrue();
+        result.OrganizationId.Should().Be(invitation.OrganizationId);
+        invitation.AcceptedAt.Should().NotBeNull();
+        _kc.Verify(k => k.CreateUserAsync(
+            "alice@example.com", It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<string>(), invitation.OrganizationId, true, It.IsAny<CancellationToken>()), Times.Once);
+        _kc.Verify(k => k.SendVerifyEmailAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task InvitationToken_ForDifferentEmail_Throws400()
+    {
+        SetupNoPendingInvitation();
+        SetupTokenInvitation("invited@example.com", "tok-123");
+
+        await Assert.ThrowsAsync<FluentValidation.ValidationException>(() =>
+            NewHandler().Handle(
+                new RegisterUserCommand("attacker@example.com", "Passw0rd!23", "Mallory", IsOwner: false,
+                    InvitationToken: "tok-123"), default));
+
+        _kc.Verify(k => k.CreateUserAsync(
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task InvitationToken_AlreadyUsed_ThrowsConflict()
+    {
+        SetupNoPendingInvitation();
+        SetupTokenInvitation("alice@example.com", "tok-123", acceptedAt: DateTimeOffset.UtcNow.AddHours(-1));
+
+        await Assert.ThrowsAsync<ConflictException>(() =>
+            NewHandler().Handle(
+                new RegisterUserCommand("alice@example.com", "Passw0rd!23", "Alice", IsOwner: false,
+                    InvitationToken: "tok-123"), default));
+    }
+
+    [Fact]
+    public async Task InvitationToken_Expired_ThrowsConflict()
+    {
+        SetupNoPendingInvitation();
+        SetupTokenInvitation("alice@example.com", "tok-123", expiresAt: DateTimeOffset.UtcNow.AddMinutes(-1));
+
+        await Assert.ThrowsAsync<ConflictException>(() =>
+            NewHandler().Handle(
+                new RegisterUserCommand("alice@example.com", "Passw0rd!23", "Alice", IsOwner: false,
+                    InvitationToken: "tok-123"), default));
+    }
+
+    [Fact]
+    public async Task InvitationToken_Unknown_ThrowsConflict()
+    {
+        SetupNoPendingInvitation();
+        _invitations.Setup(r => r.FindByTokenAsync("nope", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Invitation?)null);
+
+        await Assert.ThrowsAsync<ConflictException>(() =>
+            NewHandler().Handle(
+                new RegisterUserCommand("alice@example.com", "Passw0rd!23", "Alice", IsOwner: false,
+                    InvitationToken: "nope"), default));
+    }
 }

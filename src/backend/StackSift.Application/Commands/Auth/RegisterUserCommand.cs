@@ -18,14 +18,17 @@ public record RegisterUserCommand(
     bool IsOwner,
     string? CaptchaToken = null,
     string? Honeypot = null,
-    string? RemoteIp = null) : IRequest<RegisterUserResult>;
+    string? RemoteIp = null,
+    string? InvitationToken = null) : IRequest<RegisterUserResult>;
 
 public record RegisterUserResult(
     Guid UserId,
     string Email,
     string Role,
     Guid? OrganizationId,
-    bool AttachedViaInvitation);
+    bool AttachedViaInvitation,
+    bool EmailVerified,
+    bool VerificationEmailSent);
 
 public sealed class RegisterUserCommandHandler(
     IKeycloakAdminClient keycloak,
@@ -44,13 +47,33 @@ public sealed class RegisterUserCommandHandler(
         if (!string.IsNullOrWhiteSpace(cmd.Honeypot))
         {
             logger.LogInformation("Register honeypot tripped for {Email}; silently dropped", normalized);
-            return new RegisterUserResult(Guid.Empty, normalized, "viewer", null, false);
+            return new RegisterUserResult(Guid.Empty, normalized, "viewer", null, false,
+                EmailVerified: false, VerificationEmailSent: true);
         }
 
         if (captcha.Enabled && !await captcha.VerifyAsync(cmd.CaptchaToken, cmd.RemoteIp, ct))
             throw new ValidationException("Captcha verification failed.");
 
         var pending = await uow.Invitations.FindPendingByEmailAsync(normalized, ct);
+
+        // An invitation token carried through the register link proves the caller
+        // received the invite email — the same trust basis as /accept-invitation.
+        // Such users are created already-verified; a bare email match is NOT proof
+        // (anyone who learns an invited address could otherwise claim the seat).
+        Invitation? tokenInvitation = null;
+        if (!string.IsNullOrWhiteSpace(cmd.InvitationToken))
+        {
+            tokenInvitation = await uow.Invitations.FindByTokenAsync(cmd.InvitationToken, ct);
+            if (tokenInvitation is null
+                || tokenInvitation.AcceptedAt is not null
+                || tokenInvitation.ExpiresAt <= DateTimeOffset.UtcNow)
+                throw new ConflictException("Invitation is invalid, expired, or already used.");
+
+            if (!string.Equals(tokenInvitation.Email, normalized, StringComparison.OrdinalIgnoreCase))
+                throw new ValidationException("This invitation was issued for a different email address.");
+
+            pending = tokenInvitation;
+        }
 
         if (registrationOptions.Value.InviteOnly && pending is null)
         {
@@ -78,10 +101,12 @@ public sealed class RegisterUserCommandHandler(
             }
         }
 
-        // Self-service registration carries no proof of email ownership, so the user is
-        // created unverified and must complete the Keycloak verify-email flow below.
+        // Token-bearing registrations are verified by construction; bare self-service
+        // registration carries no proof of email ownership, so the user is created
+        // unverified and must complete the Keycloak verify-email flow below.
+        var emailVerified = tokenInvitation is not null;
         var keycloakUserId = await keycloak.CreateUserAsync(
-            normalized, cmd.Password, cmd.DisplayName, roleSlug, orgId, emailVerified: false, ct);
+            normalized, cmd.Password, cmd.DisplayName, roleSlug, orgId, emailVerified, ct);
 
         try
         {
@@ -105,17 +130,23 @@ public sealed class RegisterUserCommandHandler(
             await uow.SaveChangesAsync(ct);
 
             // Realm policy requires email verification before login. Trigger the
-            // Keycloak verify-email here; a mail failure must not fail (or roll
-            // back) registration — the account is committed and the user can
-            // request a resend / be re-verified by an admin.
-            try
+            // Keycloak verify-email here (skipped for token-verified users); a mail
+            // failure must not fail (or roll back) registration — the account is
+            // committed and the user can request a resend / be re-verified by an
+            // admin — but the caller is told so the UI doesn't claim a mail was sent.
+            var verificationEmailSent = false;
+            if (!emailVerified)
             {
-                await keycloak.SendVerifyEmailAsync(user.Id, ct);
-            }
-            catch (Exception emailEx)
-            {
-                logger.LogWarning(emailEx,
-                    "Failed to send verification email to {UserId}; account created without it", user.Id);
+                try
+                {
+                    await keycloak.SendVerifyEmailAsync(user.Id, ct);
+                    verificationEmailSent = true;
+                }
+                catch (Exception emailEx)
+                {
+                    logger.LogWarning(emailEx,
+                        "Failed to send verification email to {UserId}; account created without it", user.Id);
+                }
             }
 
             if (pending is not null)
@@ -133,7 +164,9 @@ public sealed class RegisterUserCommandHandler(
 
             return new RegisterUserResult(
                 user.Id, user.Email, roleSlug, user.OrganizationId,
-                AttachedViaInvitation: pending is not null);
+                AttachedViaInvitation: pending is not null,
+                EmailVerified: emailVerified,
+                VerificationEmailSent: verificationEmailSent);
         }
         catch (Exception ex)
         {
