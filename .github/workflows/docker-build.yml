@@ -96,7 +96,6 @@ jobs:
             build-args: |
               NEXT_PUBLIC_API_URL=https://api.${{ github.event.inputs.domain || 'stacksift.com' }}
               NEXT_PUBLIC_SIGNALR_HUB_URL=https://api.${{ github.event.inputs.domain || 'stacksift.com' }}/hubs/stacksift
-              NEXT_PUBLIC_APP_URL=https://app.${{ github.event.inputs.domain || 'stacksift.com' }}
               NEXT_PUBLIC_AUTH_MOCK=false
               NEXT_PUBLIC_SIGNALR_MOCK=false
               NEXT_PUBLIC_REGISTRATION_INVITE_ONLY=${{ github.event.inputs.invite_only || 'false' }}

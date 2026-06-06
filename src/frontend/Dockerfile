@@ -50,17 +50,11 @@ ARG NEXT_PUBLIC_SIGNALR_HUB_URL=http://localhost:5190/hubs/stacksift
 # Closed beta: hide the "create an organisation" path on the register page (the
 # backend still enforces invite-only). Read client-side → baked at build.
 ARG NEXT_PUBLIC_REGISTRATION_INVITE_ONLY=false
-# Public base URL of the app. Auth route handlers use it for every URL handed
-# to Keycloak (redirect_uri, post_logout_redirect_uri) and for redirects back
-# into the app — the request origin is the container bind address (0.0.0.0) in
-# standalone mode, which Keycloak rejects.
-ARG NEXT_PUBLIC_APP_URL=http://localhost:3000
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL} \
     NEXT_PUBLIC_AUTH_MOCK=${NEXT_PUBLIC_AUTH_MOCK} \
     NEXT_PUBLIC_SIGNALR_MOCK=${NEXT_PUBLIC_SIGNALR_MOCK} \
     NEXT_PUBLIC_SIGNALR_HUB_URL=${NEXT_PUBLIC_SIGNALR_HUB_URL} \
     NEXT_PUBLIC_REGISTRATION_INVITE_ONLY=${NEXT_PUBLIC_REGISTRATION_INVITE_ONLY} \
-    NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL} \
     NEXT_TELEMETRY_DISABLED=1
 
 RUN pnpm --filter ./src/frontend build
