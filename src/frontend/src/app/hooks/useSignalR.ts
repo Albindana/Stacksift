@@ -10,6 +10,7 @@ import {
 } from '@/app/lib/signalr-config';
 import { useSignalRStore } from '@/app/hooks/useSignalRStore';
 import { useUIStore } from '@/app/hooks/useUIStore';
+import { useLiveProjectId } from '@/app/hooks/useLiveProjectId';
 import { useToastStore } from '@/app/hooks/useToastStore';
 
 // ---------------------------------------------------------------------------
@@ -129,15 +130,19 @@ export function useSignalR({ hubUrl, connectionFactory, manageLifecycle = true }
   // `connection` and `manageLifecycle` are both stable after mount — safe to omit.
 
   // Project group subscription — keeps this connection in sync with the
-  // user's active project. Server broadcasts to `project-{projectId}` groups.
+  // project the user is actually watching. Server broadcasts to
+  // `project-{projectId}` groups; useLiveProjectId resolves
+  // logs-page filter → OrgSwitcher selection → first project, so users who
+  // never touched the switcher still get a live feed.
   // Only the lifecycle owner (manageLifecycle: true) handles this.
-  const activeProjectId = useUIStore((s) => s.activeProjectId);
+  const liveProjectId = useLiveProjectId();
   const setActiveProject = useUIStore((s) => s.setActiveProject);
+  const setLiveProjectOverride = useUIStore((s) => s.setLiveProjectOverride);
   useEffect(() => {
-    if (!manageLifecycle || connectionState !== HubConnectionState.Connected || !activeProjectId) return;
+    if (!manageLifecycle || connectionState !== HubConnectionState.Connected || !liveProjectId) return;
 
     void connection
-      .invoke('JoinProjectGroup', activeProjectId)
+      .invoke('JoinProjectGroup', liveProjectId)
       .catch((err: unknown) => {
         console.warn('[useSignalR] JoinProjectGroup failed:', err);
         const message = err instanceof Error ? err.message : String(err);
@@ -147,12 +152,14 @@ export function useSignalR({ hubUrl, connectionFactory, manageLifecycle = true }
             message: "You don't have access to this project's live feed.",
             duration: 6_000,
           });
-          // Clear so subsequent renders don't retry the forbidden subscription.
+          // Clear both sources so subsequent renders don't retry the
+          // forbidden subscription.
+          setLiveProjectOverride(null);
           setActiveProject(null);
         }
       });
 
-    const projectId = activeProjectId;
+    const projectId = liveProjectId;
     return () => {
       void connection
         .invoke('LeaveProjectGroup', projectId)
@@ -160,7 +167,7 @@ export function useSignalR({ hubUrl, connectionFactory, manageLifecycle = true }
           console.warn('[useSignalR] LeaveProjectGroup failed:', err);
         });
     };
-  }, [connection, connectionState, activeProjectId, manageLifecycle, setActiveProject])
+  }, [connection, connectionState, liveProjectId, manageLifecycle, setActiveProject, setLiveProjectOverride])
 
   // Visibility-aware pause: when the tab has been hidden >30s, stop the
   // connection to save backend resources; resume on visibility return.

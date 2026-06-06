@@ -11,6 +11,14 @@
 
 import { renderHook, act } from '@testing-library/react';
 import { HubConnectionState } from '@microsoft/signalr';
+
+// useLiveProjectId pulls useProjects (TanStack Query); stub the query so the
+// hook can run without a QueryClientProvider. Project resolution itself is
+// covered in useLiveProjectId.test.tsx — these tests drive useUIStore directly.
+jest.mock('@/app/hooks/queries/use-projects', () => ({
+  useProjects: () => ({ data: undefined, isLoading: false }),
+}));
+
 import { useSignalR } from '../useSignalR';
 import { useSignalRStore } from '../useSignalRStore';
 import { useUIStore } from '../useUIStore';

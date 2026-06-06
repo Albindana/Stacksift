@@ -7,6 +7,12 @@ import { LogTable } from './LogTable';
 import { useLogEntries, useLogAppend } from '@/app/hooks/queries/use-logs';
 import { TIME_PRESETS, DEFAULT_PRESET } from '@/app/lib/time-presets';
 import { useSignalRConnectionFromContext } from '@/app/hooks/useSignalRConnectionContext';
+import { useSignalRStore } from '@/app/hooks/useSignalRStore';
+import { useLiveProjectId } from '@/app/hooks/useLiveProjectId';
+import { useProjects } from '@/app/hooks/queries/use-projects';
+import { useUIStore } from '@/app/hooks/useUIStore';
+import { HubConnectionState } from '@microsoft/signalr';
+import { cn } from '@/app/lib/utils';
 import type { IHubConnection } from '@/app/lib/signalr-mock';
 import { HUB_METHOD_LOG_ENTRY } from '@/app/lib/signalr-config';
 import type { LogEntry, LogLevel, LogQueryFilters } from '@/app/types';
@@ -106,6 +112,15 @@ export function LogsView() {
   const query = useLogEntries(apiFilters);
   const appendLog = useLogAppend(apiFilters);
 
+  // Point the live SignalR feed at the project this page is filtered to
+  // (server broadcasts per project group); cleared again on unmount so the
+  // OrgSwitcher selection takes back over elsewhere in the app.
+  const setLiveProjectOverride = useUIStore((s) => s.setLiveProjectOverride);
+  useEffect(() => {
+    setLiveProjectOverride(filterState.projectId || null);
+    return () => setLiveProjectOverride(null);
+  }, [filterState.projectId, setLiveProjectOverride]);
+
   const connection = useSignalRConnectionFromContext();
   useEffect(() => {
     if (!connection) return;
@@ -123,7 +138,37 @@ export function LogsView() {
   return (
     <div className="flex flex-col gap-4">
       <LogFilterBar filterState={filterState} onUpdate={updateFilter} />
+      <LiveFeedIndicator />
       <LogTable query={query} appendLog={appendLog} onResetFilters={resetFilters} />
     </div>
+  );
+}
+
+// Tells the user whether new entries stream in live, and for which project —
+// the answer to "why are logs not arriving in real time" should never require
+// devtools.
+function LiveFeedIndicator() {
+  const connectionState = useSignalRStore((s) => s.connectionState);
+  const liveProjectId = useLiveProjectId();
+  const { data: projects } = useProjects();
+
+  const connected = connectionState === HubConnectionState.Connected;
+  const projectName = projects?.find((p) => p.id === liveProjectId)?.name ?? null;
+
+  return (
+    <p className="flex items-center gap-1.5 text-xs text-muted" data-testid="live-feed-indicator">
+      <span
+        aria-hidden="true"
+        className={cn(
+          'inline-block h-1.5 w-1.5 rounded-full',
+          connected ? 'bg-green-500' : 'bg-red-500',
+        )}
+      />
+      {connected && projectName
+        ? `Live feed: ${projectName}`
+        : connected
+          ? 'Live feed: no project selected'
+          : 'Live feed disconnected — new entries appear on refresh'}
+    </p>
   );
 }
