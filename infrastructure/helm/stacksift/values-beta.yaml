@@ -24,14 +24,16 @@ certIssuer:
 #     the same commit as the develop push build, so it REPLACED the push-built
 #     stacksift.com-baked image under this tag — the dmdailydeals bake is the
 #     only sha-7c37e80 frontend in the registry.
-#   - postgres/marketing: unchanged by this series; keep prior pins to avoid
-#     a pointless postgres StatefulSet restart.
+#   - marketing: sha-7c37e80 from the same dispatch (dmdailydeals bake) —
+#     picks up the mobile-UX/light-mode work from PR #142.
+#   - postgres: image content unchanged; keep the prior pin to avoid a
+#     pointless StatefulSet restart.
 images:
   api:       { tag: sha-7c37e80 }
   migrator:  { tag: sha-7c37e80 }
   postgres:  { tag: sha-2cc40a3 }
   frontend:  { tag: sha-7c37e80 }
-  marketing: { tag: sha-af34045 }
+  marketing: { tag: sha-7c37e80 }
 
 # Minimal in-namespace Prometheus + the 4 Gate-2 alerts (needs Prometheus-Operator
 # CRDs, available on the cluster). Grafana/Loki deferred to bucket B.
