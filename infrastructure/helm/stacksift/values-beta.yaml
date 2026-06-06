@@ -13,9 +13,16 @@ certIssuer:
   useStaging: false
   email: verify@dmdailydeals.com
 
-# Pin to the live images. Use IMMUTABLE sha tags — never the mutable
-# `:dmdailydeals` (IfNotPresent won't re-pull it, and a push build can
-# overwrite it with the wrong NEXT_PUBLIC_* domain).
+# MANUAL-DEPLOY BASELINE pins. Once beta CD lands (docs/runbooks/11-beta-cd.md),
+# the deploy-beta job overrides these with --set per deploy, so the Helm
+# release — `helm get values stacksift -n project-07` — is the authoritative
+# record of what is live; this file may lag. Refresh pins here via normal PRs
+# (e.g. at develop→main promotions). postgres is ALWAYS deployed from this
+# file (CD never touches it — tag changes restart the StatefulSet).
+#
+# Use IMMUTABLE sha tags — never the mutable `:dmdailydeals` (IfNotPresent
+# won't re-pull it, and a push build can overwrite it with the wrong
+# NEXT_PUBLIC_* domain).
 #   - api/migrator: develop @ 7c37e80 (AI-feature fix series: ES .keyword
 #     queries, incident↔analysis linkage + backfill, alert-rule severity,
 #     ContextLogCount + email cooldown).
