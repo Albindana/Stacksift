@@ -23,7 +23,8 @@ public class AlertRulesController(MediatR.IMediator mediator) : BaseApiControlle
         => Ok(await Mediator.Send(new GetAlertRulesQuery(projectId), ct));
 
     /// <summary>Create a new alert rule.</summary>
-    /// <param name="body">Alert rule definition.</param>
+    /// <param name="body">Alert rule definition. Severity defaults to Medium when omitted;
+    /// Critical and High alerts also send an immediate email to org admins.</param>
     /// <returns>The created alert rule.</returns>
     [HttpPost]
     [Authorize(Policy = "MemberOrAbove")]
@@ -62,7 +63,8 @@ public class AlertRulesController(MediatR.IMediator mediator) : BaseApiControlle
                 body.WindowMinutes,
                 body.LogLevel,
                 body.Pattern,
-                body.IsActive),
+                body.IsActive,
+                body.Severity),
             ct));
     
     /// <summary>Delete an alert rule.</summary>

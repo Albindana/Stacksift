@@ -70,6 +70,7 @@ const VALID_INPUT = {
   name: 'High Error Rate',
   projectId: 'proj-1',
   condition: { type: 'ErrorRate' as const, threshold: 5, windowMinutes: 15 },
+  severity: 'high' as const,
 };
 
 // ---------------------------------------------------------------------------
@@ -100,6 +101,7 @@ describe('useCreateAlertRule — success', () => {
         condition: 'threshold',
         threshold: 5,
         windowMinutes: 15,
+        severity: 'high',
       }),
       expect.objectContaining({ schema: expect.any(Object) }),
     );

@@ -5,6 +5,8 @@ import type { AlertRuleFormInput, AlertConditionType } from '@/app/lib/schemas/a
 import {
   ALERT_CONDITION_TYPES,
   ALERT_CONDITION_LABELS,
+  ALERT_SEVERITY_OPTIONS,
+  ALERT_SEVERITY_LABELS,
   CONDITION_DEFAULTS,
   LOG_LEVEL_OPTIONS,
 } from '@/app/lib/schemas/alert-rule';
@@ -53,6 +55,7 @@ export function AlertConditionStep({ form }: Props) {
 
   const condition = watch('condition');
   const conditionType = condition.type;
+  const severity = watch('severity');
 
   const handleTypeSelect = (type: AlertConditionType) => {
     if (type === conditionType) return;
@@ -203,6 +206,39 @@ export function AlertConditionStep({ form }: Props) {
           </>
         )}
       </div>
+
+      {/* ── Severity selector ────────────────────────────────────────── */}
+      <fieldset>
+        <legend className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-3">
+          Severity
+        </legend>
+        <div className="grid grid-cols-4 gap-3">
+          {ALERT_SEVERITY_OPTIONS.map((option) => {
+            const isSelected = option === severity;
+            return (
+              <button
+                key={option}
+                type="button"
+                role="radio"
+                aria-checked={isSelected}
+                onClick={() => setValue('severity', option, { shouldDirty: true })}
+                className={cn(
+                  'rounded-lg border p-3 text-center text-sm font-semibold transition-colors',
+                  'focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500',
+                  isSelected
+                    ? 'border-blue-600 bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400'
+                    : 'border-zinc-200 bg-white text-zinc-900 hover:border-zinc-300 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:border-zinc-700',
+                )}
+              >
+                {ALERT_SEVERITY_LABELS[option]}
+              </button>
+            );
+          })}
+        </div>
+        <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+          Critical and High alerts also send an immediate email to org admins.
+        </p>
+      </fieldset>
     </div>
   );
 }
