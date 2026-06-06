@@ -110,7 +110,7 @@ function setup(connection: IHubConnection | null) {
 }
 
 beforeEach(() => {
-  useNotificationStore.getState().reset();
+  useNotificationStore.setState({ lastSeenAt: {}, ephemeral: [] });
 });
 
 describe('useSignalREvents — subscription lifecycle', () => {
@@ -146,7 +146,7 @@ describe('useSignalREvents — subscription lifecycle', () => {
 });
 
 describe('useSignalREvents — ReceiveAlert', () => {
-  it('increments the unread notification count', () => {
+  it('does not touch the notification store (badge is computed from the alerts query)', () => {
     const mock = makeMockConnection();
     const { wrapper } = setup(mock.connection);
     renderHook(() => useSignalREvents(), { wrapper });
@@ -155,7 +155,7 @@ describe('useSignalREvents — ReceiveAlert', () => {
     if (!handler) throw new Error('ReceiveAlert handler missing');
     handler(makeAlert());
 
-    expect(useNotificationStore.getState().unread).toBe(1);
+    expect(useNotificationStore.getState().ephemeral).toEqual([]);
   });
 
   it('invalidates dashboard stats + alerts list caches', () => {
@@ -205,6 +205,26 @@ describe('useSignalREvents — ReceiveAiAnalysisCompleted', () => {
 
     expect(invalidateSpy).toHaveBeenCalledWith({
       queryKey: queryKeys.incidents.detail(analysis.incidentId),
+    });
+  });
+
+  it('pushes an ephemeral notification for the completion', () => {
+    const mock = makeMockConnection();
+    const { wrapper } = setup(mock.connection);
+    renderHook(() => useSignalREvents(), { wrapper });
+
+    const analysis = makeAnalysis();
+    const handler = mock.handlers.get(HUB_METHOD_AI_ANALYSIS_COMPLETED);
+    if (!handler) throw new Error('ReceiveAiAnalysisCompleted handler missing');
+    handler(analysis);
+
+    const { ephemeral } = useNotificationStore.getState();
+    expect(ephemeral).toHaveLength(1);
+    expect(ephemeral[0]).toMatchObject({
+      id: analysis.id,
+      type: 'ai',
+      incidentId: analysis.incidentId,
+      seen: false,
     });
   });
 });
