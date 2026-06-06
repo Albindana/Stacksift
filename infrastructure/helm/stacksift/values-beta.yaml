@@ -13,19 +13,37 @@ certIssuer:
   useStaging: false
   email: verify@dmdailydeals.com
 
-# Pin to the live images (what's deployed at rev 12+). Use IMMUTABLE sha tags —
-# never the mutable `:dmdailydeals` (IfNotPresent won't re-pull it, and a push
-# build can overwrite it with the wrong NEXT_PUBLIC_* domain).
-#   - api/migrator: develop-HEAD backend (RLS cutover + invite-only + email-verify).
-#   - frontend/marketing: the dmdailydeals.com-baked build from the docker-build
-#     workflow_dispatch (domain=dmdailydeals.com) — sha-af34045, NOT sha-469519e
-#     (469519e's FE/marketing were push-built with the stacksift.com default).
+# MANUAL-DEPLOY BASELINE pins. Once beta CD lands (docs/runbooks/11-beta-cd.md),
+# the deploy-beta job overrides these with --set per deploy, so the Helm
+# release — `helm get values stacksift -n project-07` — is the authoritative
+# record of what is live; this file may lag. Refresh pins here via normal PRs
+# (e.g. at develop→main promotions). postgres is ALWAYS deployed from this
+# file (CD never touches it — tag changes restart the StatefulSet).
+#
+# Use IMMUTABLE sha tags — never the mutable `:dmdailydeals` (IfNotPresent
+# won't re-pull it, and a push build can overwrite it with the wrong
+# NEXT_PUBLIC_* domain).
+#   - api/migrator: develop @ 7c37e80 (AI-feature fix series: ES .keyword
+#     queries, incident↔analysis linkage + backfill, alert-rule severity,
+#     ContextLogCount + email cooldown).
+#   - frontend: sha-7c37e80 is the dmdailydeals.com-baked workflow_dispatch
+#     build (domain=dmdailydeals.com, invite_only=true). The dispatch ran on
+#     the same commit as the develop push build, so it REPLACED the push-built
+#     stacksift.com-baked image under this tag — the dmdailydeals bake is the
+#     only sha-7c37e80 frontend in the registry.
+#   - marketing: sha-7c37e80 from the same dispatch (dmdailydeals bake) —
+#     picks up the mobile-UX/light-mode work from PR #142.
+#   - postgres: image content unchanged; keep the prior pin to avoid a
+#     pointless StatefulSet restart.
+#   - frontend sha-26a8757: fix/logout-redirect-origin (auth routes use the
+#     configured app URL instead of the 0.0.0.0 request origin) — dmdailydeals
+#     dispatch build; tag stays valid after the branch merges to develop.
 images:
-  api:       { tag: sha-469519e }
-  migrator:  { tag: sha-469519e }
+  api:       { tag: sha-7c37e80 }
+  migrator:  { tag: sha-7c37e80 }
   postgres:  { tag: sha-2cc40a3 }
-  frontend:  { tag: sha-af34045 }
-  marketing: { tag: sha-af34045 }
+  frontend:  { tag: sha-26a8757 }
+  marketing: { tag: sha-7c37e80 }
 
 # Minimal in-namespace Prometheus + the 4 Gate-2 alerts (needs Prometheus-Operator
 # CRDs, available on the cluster). Grafana/Loki deferred to bucket B.

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Sparkles, RefreshCw, AlertCircle, CheckCircle } from 'lucide-react';
 import { cn } from '@/app/lib/utils';
-import type { AiAnalysis, AiAnalysisStatus, Incident } from '@/app/types';
+import type { AiAnalysis, AiAnalysisStatus } from '@/app/types';
 
 // ---------------------------------------------------------------------------
 // Progress copy — cycles while the Hangfire job runs (8-15s).
@@ -60,16 +60,20 @@ function ConfidenceBar({ score }: { score: number }) {
 // AiAnalysisPanel — state machine
 //
 // States:
-//   idle        → incident.aiAnalysisId === null, mutation not pending
+//   idle        → analysisId === null, mutation not pending
 //   triggering  → mutation is pending (POST just fired)
 //   pending     → aiAnalysis.status === 'pending'
 //   processing  → aiAnalysis.status === 'processing'
 //   completed   → aiAnalysis.status === 'completed'
 //   failed      → aiAnalysis.status === 'failed'
+//
+// analysisId comes from incident.aiAnalysisId, with the trigger mutation's
+// returned analysis as a fallback so the panel doesn't snap back to idle
+// while the incident refetch is still in flight.
 // ---------------------------------------------------------------------------
 
 export interface AiAnalysisPanelProps {
-  incident: Incident;
+  analysisId: string | null;
   aiAnalysis: AiAnalysis | undefined;
   isTriggeringAnalysis: boolean;
   onTrigger: () => void;
@@ -78,22 +82,22 @@ export interface AiAnalysisPanelProps {
 type PanelState = 'idle' | 'triggering' | AiAnalysisStatus;
 
 function deriveState(
-  incident: Incident,
+  analysisId: string | null,
   aiAnalysis: AiAnalysis | undefined,
   isTriggering: boolean,
 ): PanelState {
   if (isTriggering) return 'triggering';
-  if (!incident.aiAnalysisId) return 'idle';
+  if (!analysisId) return 'idle';
   return aiAnalysis?.status ?? 'pending';
 }
 
 export function AiAnalysisPanel({
-  incident,
+  analysisId,
   aiAnalysis,
   isTriggeringAnalysis,
   onTrigger,
 }: AiAnalysisPanelProps) {
-  const state = deriveState(incident, aiAnalysis, isTriggeringAnalysis);
+  const state = deriveState(analysisId, aiAnalysis, isTriggeringAnalysis);
 
   return (
     <div className="flex flex-col gap-3">
@@ -135,6 +139,18 @@ export function AiAnalysisPanel({
         {/* ── Completed: render all fields ──────────────────────────────── */}
         {state === 'completed' && aiAnalysis && (
           <div className="flex flex-col gap-5">
+            {/* Degraded-context warning: the job found no logs to analyze */}
+            {aiAnalysis.contextLogCount === 0 && (
+              <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-300">
+                <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span>
+                  Analyzed without log context — no logs were found around the
+                  incident start time. Check that ingestion is working and
+                  timestamps line up, then retry the analysis.
+                </span>
+              </div>
+            )}
+
             {/* Confidence score */}
             {aiAnalysis.confidenceScore !== null && (
               <div className="flex flex-col gap-1">

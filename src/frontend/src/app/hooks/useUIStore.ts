@@ -22,6 +22,14 @@ interface UIStore {
    */
   activeProjectId: string | null;
 
+  /**
+   * Ephemeral override for which project the live SignalR feed should tail.
+   * Set by the logs page from its project filter, cleared on unmount, never
+   * persisted. Resolution order: override → activeProjectId → first project
+   * (see useLiveProjectId).
+   */
+  liveProjectOverride: string | null;
+
   // --- Appearance ----------------------------------------------------------
   /**
    * The user's theme preference.
@@ -36,6 +44,7 @@ interface UIStore {
   toggleMobileDrawer: () => void;
   setMobileDrawerOpen: (open: boolean) => void;
   setActiveProject: (projectId: string | null) => void;
+  setLiveProjectOverride: (projectId: string | null) => void;
   setTheme: (theme: Theme) => void;
 }
 
@@ -61,6 +70,7 @@ export const useUIStore = create<UIStore>()(
         sidebarCollapsed: false,
         mobileDrawerOpen: false,
         activeProjectId: null,
+        liveProjectOverride: null,
         theme: 'system',
 
         toggleSidebar: () =>
@@ -96,6 +106,13 @@ export const useUIStore = create<UIStore>()(
             () => ({ activeProjectId: projectId }),
             false,
             'setActiveProject',
+          ),
+
+        setLiveProjectOverride: (projectId) =>
+          set(
+            () => ({ liveProjectOverride: projectId }),
+            false,
+            'setLiveProjectOverride',
           ),
 
         setTheme: (theme) =>

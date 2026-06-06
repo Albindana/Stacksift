@@ -213,7 +213,10 @@ public class ElasticsearchLogEntryRepository(
             {
                 Term = new TermQuery
                 {
-                    Field = new Field("projectId"),
+                    // Term queries must target the .keyword subfields: the dynamic
+                    // mapping analyzes the base fields, which tokenizes UUIDs/levels
+                    // and makes exact-value terms unmatchable.
+                    Field = new Field("projectId.keyword"),
                     Value = FieldValue.String(filters.ProjectId.Value.ToString())
                 }
             });
@@ -223,7 +226,7 @@ public class ElasticsearchLogEntryRepository(
             {
                 Term = new TermQuery
                 {
-                    Field = new Field("logSourceId"),
+                    Field = new Field("logSourceId.keyword"),
                     Value = FieldValue.String(filters.LogSourceId.Value.ToString())
                 }
             });
@@ -236,7 +239,7 @@ public class ElasticsearchLogEntryRepository(
                 {
                     Term = new TermQuery
                     {
-                        Field = new Field("level"),
+                        Field = new Field("level.keyword"),
                         Value = FieldValue.String(filters.Levels[0].ToString())
                     }
                 });
@@ -247,7 +250,7 @@ public class ElasticsearchLogEntryRepository(
                 {
                     Terms = new TermsQuery
                     {
-                        Field = new Field("level"),
+                        Field = new Field("level.keyword"),
                         Terms = new TermsQueryField(filters.Levels
                             .Select(l => FieldValue.String(l.ToString()))
                             .ToArray())

@@ -10,6 +10,12 @@
  */
 
 import { renderHook, act } from '@testing-library/react';
+
+// useSignalR → useLiveProjectId → useProjects (TanStack Query); stub it so
+// these hook tests run without a QueryClientProvider.
+jest.mock('@/app/hooks/queries/use-projects', () => ({
+  useProjects: () => ({ data: undefined, isLoading: false }),
+}));
 import { HubConnectionState } from '@microsoft/signalr';
 import { useAlertNotifications } from '../useAlertNotifications';
 import { useToastStore } from '../useToastStore';

@@ -7,7 +7,8 @@ import { useAlertRules } from '@/app/hooks/queries/use-alert-rules';
 import { useProjects } from '@/app/hooks/queries/use-projects';
 import { useUIStore } from '@/app/hooks/useUIStore';
 import { useDeleteAlertRule, useUpdateAlertRule } from '@/app/hooks/mutations/use-create-alert-rule';
-import type { AlertRule } from '@/app/types';
+import { ALERT_SEVERITY_OPTIONS, ALERT_SEVERITY_LABELS } from '@/app/lib/schemas/alert-rule';
+import type { AlertRule, AlertSeverity } from '@/app/types';
 
 function formatRuleValue(rule: AlertRule): string {
   if (rule.pattern) return rule.pattern;
@@ -40,6 +41,7 @@ export function AlertRulesView() {
       windowMinutes: rule.windowMinutes,
       logLevel: rule.logLevel,
       pattern: rule.pattern,
+      severity: rule.severity,
       isActive: !rule.isActive,
     });
   };
@@ -57,6 +59,24 @@ export function AlertRulesView() {
       windowMinutes: rule.windowMinutes,
       logLevel: rule.logLevel,
       pattern: rule.pattern,
+      severity: rule.severity,
+      isActive: rule.isActive,
+    });
+  };
+
+  const handleSeverityChange = (rule: AlertRule, severity: AlertSeverity) => {
+    if (severity === rule.severity) return;
+
+    updateRule.mutate({
+      id: rule.id,
+      projectId: rule.projectId,
+      name: rule.name,
+      condition: rule.condition,
+      threshold: rule.threshold,
+      windowMinutes: rule.windowMinutes,
+      logLevel: rule.logLevel,
+      pattern: rule.pattern,
+      severity,
       isActive: rule.isActive,
     });
   };
@@ -120,7 +140,20 @@ export function AlertRulesView() {
                   <td className="px-4 py-3 font-medium text-primary">{rule.name}</td>
                   <td className="px-4 py-3 capitalize text-muted">{rule.condition}</td>
                   <td className="px-4 py-3 text-muted">{formatRuleValue(rule)}</td>
-                  <td className="px-4 py-3 capitalize text-muted">{rule.severity}</td>
+                  <td className="px-4 py-3">
+                    <select
+                      value={rule.severity}
+                      onChange={(e) => handleSeverityChange(rule, e.target.value as AlertSeverity)}
+                      aria-label={`Severity for ${rule.name}`}
+                      className="rounded-md border border-line bg-surface px-2 py-1 text-xs text-muted focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      {ALERT_SEVERITY_OPTIONS.map((option) => (
+                        <option key={option} value={option}>
+                          {ALERT_SEVERITY_LABELS[option]}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
                   <td className="px-4 py-3 text-muted">{rule.windowMinutes}m</td>
                   <td className="px-4 py-3">
                     <span className="rounded bg-elevated px-2 py-1 text-xs text-muted">

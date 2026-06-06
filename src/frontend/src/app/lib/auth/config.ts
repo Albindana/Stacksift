@@ -54,6 +54,12 @@ export const authConfig = {
   // OAuth2 client settings
   clientId,
 
+  // Public base URL of the app. Route handlers must use this — NOT the
+  // request origin — for any URL handed to Keycloak or sent as a redirect:
+  // in the standalone container, Next derives request.url from the server
+  // bind address (HOSTNAME=0.0.0.0), so request origins are not public URLs.
+  appUrl,
+
   // Where Keycloak sends the user after authentication.
   // Must match what is registered in the Keycloak client's "Valid redirect URIs".
   redirectUri: `${appUrl}/api/auth/callback`,

@@ -179,6 +179,9 @@ namespace StackSift.Infrastructure.Persistence.Migrations
                     b.Property<double?>("ConfidenceScore")
                         .HasColumnType("double precision");
 
+                    b.Property<int>("ContextLogCount")
+                        .HasColumnType("integer");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 

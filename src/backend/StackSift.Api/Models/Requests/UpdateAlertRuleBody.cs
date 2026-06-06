@@ -11,6 +11,8 @@ namespace StackSift.Api.Models.Requests;
 /// <param name="LogLevel">Optional log-level filter (only matches logs at or above this level).</param>
 /// <param name="Pattern">Regex pattern when <paramref name="Condition"/> is pattern-based; otherwise null.</param>
 /// <param name="IsActive">Whether the rule is enabled. Inactive rules are not evaluated.</param>
+/// <param name="Severity">Alert severity. Critical and High alerts also send an immediate
+/// email to org admins. Omitting the field keeps the rule's current severity.</param>
 public record UpdateAlertRuleBody(
     string Name,
     AlertRuleCondition Condition,
@@ -18,4 +20,5 @@ public record UpdateAlertRuleBody(
     int WindowMinutes,
     LogLevel? LogLevel,
     string? Pattern,
-    bool IsActive);
+    bool IsActive,
+    AlertSeverity? Severity);

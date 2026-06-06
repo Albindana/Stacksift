@@ -1,6 +1,6 @@
 # Backend — Current State
 
-> **Last updated:** 2026-06-03 (first deploy to project-07 + incident recovery — release v11 healthy; MinIO TLS sidecar + Gate-2 runbooks added; pgBackRest backups deferred pending MinIO TLS)
+> **Last updated:** 2026-06-06 (AI-feature bug-fix series — ES `.keyword` queries, incident↔analysis linkage + trigger idempotency, alert-rule severity, degradation visibility + email cooldown; see §"AI-feature fixes (2026-06-06)")
 > **Sprint:** Post-Sprint-3 — feature surface complete; Plans 04–08 (payments, data-lifecycle/GDPR, observability, realm-as-code, security) landed; now Docker-native.
 > **Health:** All four layers fully built out. Backend test suite on real Testcontainers (Postgres pgvector:pg16 + Keycloak) — last reported 209/209 green at CORE-FUNC, since extended by billing/GDPR/security work. The whole stack now boots and works **composed in Docker Compose** (see §"Docker integration" below).
 
@@ -73,6 +73,20 @@ Api → Infrastructure → Application → Domain
 | **PD-05 realm-as-code** | Keycloak Terraform module (`infrastructure/terraform/keycloak/`) — realm + 3 OIDC clients + service-account grants + required actions; dev realm JSON hardened (verify-email, brute-force, password policy, refresh rotation). |
 | **PD-08 security / multi-tenancy** | Defense-in-depth tenancy: repo filter → EF global query filter → **Postgres RLS** (`AddRowLevelSecurity`) → per-request session GUC (`TenantConnectionInterceptor`, `ICurrentOrgProvider`). Append-only audit (`AddAuditLogAppendOnlyTrigger`). Registration abuse (Turnstile, disposable-email, honeypot). Config-driven CORS, security headers, expanded rate limits, ingest/body caps. `docs/multi-tenancy-verification.md`, `docs/security/`. |
 | **Surfaces** | Marketing site (`src/marketing`, Next.js 16) and ingest SDKs (`@stacksift/winston-transport`, `StackSift.Serilog.Sink`) added with their own CI jobs. |
+
+## AI-feature fixes (2026-06-06 — `fix/ai-analysis-context-and-linkage` → `feat/alert-rule-severity` → `fix/ai-degradation-hardening`)
+
+Beta testing on project-07 surfaced three independent bugs in the alert → incident → AI-analysis loop; all root-caused live (see `zhelpers/DEPLOY/to-fix/ai-feature.md`) and fixed:
+
+| Bug | Root cause | Fix |
+|---|---|---|
+| AI analyses ran blind (no logs, no embedding, 0.2 confidence) | ES `term` queries on dynamic-mapped analyzed `text` fields (`projectId` etc.) never match UUIDs/levels — also broke logs-page project/source/level filters | `.keyword` subfield queries in `RunAiAnalysisJob` + `ElasticsearchLogEntryRepository`; explicit text+keyword mappings in the `stacksift-logs` index template (no reindex needed) |
+| "Analyze with AI" appeared to do nothing; duplicate analyses burned quota | `TriggerAiAnalysisCommandHandler` never wrote `Incident.AiAnalysisId`; panel derives `idle` from it | Handler writes the FK; Pending/Processing idempotency guard; data-only backfill migration; panel takes `analysisId` with mutation-result fallback |
+| No alert email | Severity not settable anywhere → always Medium → Critical/High-only email gate unreachable | Severity through create/update commands (nullable, create defaults Medium), wizard selector + review copy, inline list select |
+
+Hardening: `AiAnalyses.ContextLogCount` (backfilled) + `completed_degraded` metric + amber "analyzed without log context" panel notice; 15-min per-rule Redis cooldown on immediate alert emails. New test infra: `CapturingEsClientFactory` (in-memory ES invoker recording serialized request bodies; requires lowercase `x-elastic-product` response header). Migrations 14–16: `BackfillIncidentAiAnalysisId`, `AddAiAnalysisContextLogCount`. Suite: 307/307 backend, 717/717 frontend.
+
+Deploy-gated verification still open: re-trigger analysis on beta (expect `ContextLogCount > 0` + embedding), logs-page filters, High-severity email via Resend, Similar Incidents end-to-end.
 
 ## Docker integration (2026-05-31 — `ffe8d09..2cc40a3`)
 

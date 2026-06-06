@@ -93,3 +93,4 @@ CVE-2026-39825  # gosu/Go stdlib — unreachable
 CVE-2026-39826  # gosu/Go stdlib — unreachable
 CVE-2026-39836  # gosu/Go stdlib — unreachable
 CVE-2026-42499  # gosu/Go stdlib — unreachable
+CVE-2026-42504  # gosu/Go stdlib mime invalid-encoded-word decode DoS — unreachable (gosu never decodes MIME headers); reviewed 2026-06-06

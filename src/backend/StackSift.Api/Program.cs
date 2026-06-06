@@ -363,7 +363,12 @@ builder.Services.AddCors(options =>
     options.AddPolicy("Frontend", p => p
         .WithOrigins(corsOrigins)
         .WithMethods("GET", "POST", "PUT", "PATCH", "DELETE")
-        .WithHeaders("Authorization", "Content-Type", "X-Api-Key", "X-Correlation-ID")
+        // X-Requested-With + X-SignalR-User-Agent are sent by the SignalR JS
+        // client on negotiate; a requested-but-unallowed header makes the browser
+        // fail the preflight and never send the POST — killing every real-time
+        // feature (live logs, alert toasts, AI-completion push).
+        .WithHeaders("Authorization", "Content-Type", "X-Api-Key", "X-Correlation-ID",
+            "X-Requested-With", "X-SignalR-User-Agent")
         .AllowCredentials()
         .SetPreflightMaxAge(TimeSpan.FromMinutes(10))));
 

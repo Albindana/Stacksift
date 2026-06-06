@@ -71,7 +71,7 @@ public class AlertFiredConsumerTests(PostgresContainerFixture postgres) : IAsync
             .Returns("job-1");
 
         var consumer = new AlertFiredConsumer(
-            _db, mockHub.Object, mockJobs.Object,
+            _db, mockHub.Object, mockJobs.Object, new Mock<ICacheService>().Object,
             NullLogger<AlertFiredConsumer>.Instance,
             new FakeCurrentOrgProvider());
 
@@ -106,12 +106,97 @@ public class AlertFiredConsumerTests(PostgresContainerFixture postgres) : IAsync
         var mockJobs = new Mock<IBackgroundJobClient>();
 
         var consumer = new AlertFiredConsumer(
-            _db, mockHub.Object, mockJobs.Object,
+            _db, mockHub.Object, mockJobs.Object, new Mock<ICacheService>().Object,
             NullLogger<AlertFiredConsumer>.Instance,
             new FakeCurrentOrgProvider());
 
         await consumer.Consume(BuildContext(alert).Object);
 
         mockJobs.Verify(j => j.Create(It.IsAny<Job>(), It.IsAny<IState>()), Times.Never);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Test 3: cooldown — second High alert for the same rule sends no email
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Consume_RuleInCooldown_DoesNotEnqueueImmediateAlertJob()
+    {
+        var ruleId = Guid.NewGuid();
+        var alert = new Alert
+        {
+            Id = Guid.NewGuid(),
+            OrganizationId = Guid.NewGuid(),
+            AlertRuleId = ruleId,
+            Severity = AlertSeverity.High,
+            Title = "Error spike",
+            FiredAt = DateTimeOffset.UtcNow,
+        };
+        _db.Alerts.Add(alert);
+        await _db.SaveChangesAsync();
+
+        var mockHub = new Mock<IAlertHubService>();
+        mockHub
+            .Setup(h => h.BroadcastAlertAsync(It.IsAny<AlertDto>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var mockJobs = new Mock<IBackgroundJobClient>();
+        var mockCache = new Mock<ICacheService>();
+        mockCache
+            .Setup(c => c.GetAsync<string>($"alert-email-cooldown:{ruleId}", It.IsAny<CancellationToken>()))
+            .ReturnsAsync("1");
+
+        var consumer = new AlertFiredConsumer(
+            _db, mockHub.Object, mockJobs.Object, mockCache.Object,
+            NullLogger<AlertFiredConsumer>.Instance,
+            new FakeCurrentOrgProvider());
+
+        await consumer.Consume(BuildContext(alert).Object);
+
+        mockJobs.Verify(j => j.Create(It.IsAny<Job>(), It.IsAny<IState>()), Times.Never);
+        mockHub.Verify(h => h.BroadcastAlertAsync(It.IsAny<AlertDto>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Test 4: first High alert arms the cooldown and still emails
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Consume_FirstHighAlert_ArmsCooldownAndEnqueues()
+    {
+        var ruleId = Guid.NewGuid();
+        var alert = new Alert
+        {
+            Id = Guid.NewGuid(),
+            OrganizationId = Guid.NewGuid(),
+            AlertRuleId = ruleId,
+            Severity = AlertSeverity.High,
+            Title = "Error spike",
+            FiredAt = DateTimeOffset.UtcNow,
+        };
+        _db.Alerts.Add(alert);
+        await _db.SaveChangesAsync();
+
+        var mockHub = new Mock<IAlertHubService>();
+        mockHub
+            .Setup(h => h.BroadcastAlertAsync(It.IsAny<AlertDto>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var mockJobs = new Mock<IBackgroundJobClient>();
+        mockJobs
+            .Setup(j => j.Create(It.IsAny<Job>(), It.IsAny<IState>()))
+            .Returns("job-1");
+        var mockCache = new Mock<ICacheService>();
+
+        var consumer = new AlertFiredConsumer(
+            _db, mockHub.Object, mockJobs.Object, mockCache.Object,
+            NullLogger<AlertFiredConsumer>.Instance,
+            new FakeCurrentOrgProvider());
+
+        await consumer.Consume(BuildContext(alert).Object);
+
+        mockCache.Verify(c => c.SetAsync(
+            $"alert-email-cooldown:{ruleId}", "1", TimeSpan.FromMinutes(15), It.IsAny<CancellationToken>()), Times.Once);
+        mockJobs.Verify(j => j.Create(It.IsAny<Job>(), It.IsAny<IState>()), Times.Once);
     }
 }

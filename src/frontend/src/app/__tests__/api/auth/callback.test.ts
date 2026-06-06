@@ -28,6 +28,7 @@ jest.mock('@/app/lib/auth/config', () => ({
   authConfig: {
     mockMode: true,
     clientId: 'stacksift-frontend',
+    appUrl: 'http://localhost:3000',
     redirectUri: 'http://localhost:3000/api/auth/callback',
     scopes: ['openid', 'profile', 'email'],
     cookies: {

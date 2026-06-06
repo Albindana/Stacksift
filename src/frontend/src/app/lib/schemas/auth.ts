@@ -25,6 +25,9 @@ export const registerSchema = z.object({
   role: z.enum(['owner', 'viewer']),
   captchaToken: z.string().optional(),
   honeypot: z.string().optional(),
+  // Carried from the invite link (/register?invite=<token>). Proves inbox
+  // ownership — the backend creates token-bearing registrations pre-verified.
+  invitationToken: z.string().optional(),
 });
 
 export type RegisterFormValues = z.infer<typeof registerSchema>;
@@ -44,6 +47,9 @@ export const registerApiResultSchema = z.object({
   role: z.enum(['owner', 'admin', 'member', 'viewer']),
   organizationId: z.string().uuid().nullable(),
   attachedViaInvitation: z.boolean(),
+  // Defaulted for responses from API versions predating the fields.
+  emailVerified: z.boolean().default(false),
+  verificationEmailSent: z.boolean().default(true),
 });
 
 export type RegisterApiResult = z.infer<typeof registerApiResultSchema>;

@@ -20,7 +20,7 @@ type HubHandler = Parameters<IHubConnection['on']>[1];
 export function useSignalREvents(): void {
   const connection = useSignalRConnectionFromContext();
   const queryClient = useQueryClient();
-  const incrementUnread = useNotificationStore((s) => s.increment);
+  const pushEphemeral = useNotificationStore((s) => s.pushEphemeral);
 
   useEffect(() => {
     if (!connection) return;
@@ -32,10 +32,11 @@ export function useSignalREvents(): void {
       });
     };
 
+    // The unread badge is computed from the alerts query + lastSeenAt
+    // watermark (useNotificationFeed) — alerts only need the invalidation.
     const onAlert = (_alert: Alert) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.stats() });
       queryClient.invalidateQueries({ queryKey: queryKeys.alerts.all });
-      incrementUnread();
     };
 
     const onAiAnalysisCompleted = (analysis: AiAnalysis) => {
@@ -46,10 +47,23 @@ export function useSignalREvents(): void {
       queryClient.invalidateQueries({
         queryKey: queryKeys.incidents.detail(analysis.incidentId),
       });
+      pushEphemeral({
+        id: analysis.id,
+        type: 'ai',
+        title: 'AI analysis completed',
+        incidentId: analysis.incidentId,
+        at: new Date().toISOString(),
+      });
     };
 
     const onSubscriptionUpdated = (subscription: Subscription) => {
       queryClient.setQueryData(queryKeys.billing.subscription(), subscription);
+      pushEphemeral({
+        id: crypto.randomUUID(),
+        type: 'subscription',
+        title: `Subscription updated — plan: ${subscription.plan}`,
+        at: new Date().toISOString(),
+      });
     };
 
     const logEntryAdapter = onLogEntry as HubHandler;
@@ -68,5 +82,5 @@ export function useSignalREvents(): void {
       connection.off(HUB_METHOD_AI_ANALYSIS_COMPLETED, aiAdapter);
       connection.off(HUB_METHOD_SUBSCRIPTION_UPDATED, subscriptionAdapter);
     };
-  }, [connection, queryClient, incrementUnread]);
+  }, [connection, queryClient, pushEphemeral]);
 }

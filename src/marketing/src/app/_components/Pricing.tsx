@@ -5,6 +5,7 @@ type TierCard = {
   id: Tier;
   name: string;
   price: string;
+  note: string;
   ctaLabel: string;
   features: readonly string[];
   highlight?: boolean;
@@ -15,6 +16,7 @@ const TIERS: readonly TierCard[] = [
     id: "free",
     name: "Free",
     price: "$0/mo",
+    note: "No credit card",
     ctaLabel: "Start free →",
     features: ["1 project", "7-day retention", "10 AI analyses / mo", "1 user"],
   },
@@ -22,6 +24,7 @@ const TIERS: readonly TierCard[] = [
     id: "indie",
     name: "Indie",
     price: "$19/mo",
+    note: "Best for solo devs",
     ctaLabel: "Start with Indie →",
     highlight: true,
     features: [
@@ -35,6 +38,7 @@ const TIERS: readonly TierCard[] = [
     id: "team",
     name: "Team",
     price: "$79/mo",
+    note: "For small teams",
     ctaLabel: "Start with Team →",
     features: [
       "Unlimited projects",
@@ -47,7 +51,7 @@ const TIERS: readonly TierCard[] = [
 
 export default function Pricing() {
   return (
-    <section id="pricing" className="container-page py-24 border-t border-line">
+    <section id="pricing" className="container-page py-16 border-t border-line md:py-24">
       <h2 className="text-3xl md:text-4xl font-bold">
         Pricing that fits in your Stripe statement.
       </h2>
@@ -67,9 +71,20 @@ export default function Pricing() {
           return (
             <div
               key={t.id}
-              className={`rounded-2xl border p-8 flex flex-col ${cardClass}`}
+              className={`rounded-lg border p-6 flex flex-col md:p-8 ${cardClass}`}
             >
-              <div className="text-xl font-semibold">{t.name}</div>
+              <div className="flex items-start justify-between gap-3">
+                <div className="text-xl font-semibold">{t.name}</div>
+                <div
+                  className={`rounded-md px-2 py-1 text-xs font-semibold ${
+                    t.highlight
+                      ? "bg-low text-white"
+                      : "bg-elevated text-muted"
+                  }`}
+                >
+                  {t.note}
+                </div>
+              </div>
               <div className="mt-2 text-4xl font-bold">{t.price}</div>
               <ul className="mt-6 space-y-2 text-muted flex-1">
                 {t.features.map((f) => (
@@ -78,7 +93,7 @@ export default function Pricing() {
               </ul>
               <Link
                 href={ctaUrl(t.id, `pricing-${t.id}`)}
-                className={`plausible-event-name=cta-click plausible-event-tier=${t.id} mt-8 px-5 py-3 rounded-lg text-center font-medium transition ${buttonClass}`}
+                className={`plausible-event-name=cta-click plausible-event-tier=${t.id} mt-8 px-5 py-3 rounded-lg text-center font-medium ${buttonClass}`}
               >
                 {t.ctaLabel}
               </Link>

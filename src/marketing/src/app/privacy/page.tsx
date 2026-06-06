@@ -128,8 +128,30 @@ const RIGHTS: readonly string[] = [
 
 function DataTable({ rows }: { rows: readonly DataRow[] }) {
   return (
-    <div className="mt-6 overflow-x-auto">
-      <table className="w-full text-left border border-line rounded-xl overflow-hidden min-w-[640px]">
+    <div className="mt-6">
+      <div className="grid gap-4 md:hidden">
+        {rows.map((r) => (
+          <div key={r.category} className="rounded-lg border border-line bg-surface p-4">
+            <div className="font-semibold">{r.category}</div>
+            <dl className="mt-4 grid gap-3 text-sm">
+              <div>
+                <dt className="font-semibold text-primary">Purpose</dt>
+                <dd className="mt-1 text-muted">{r.purpose}</dd>
+              </div>
+              <div>
+                <dt className="font-semibold text-primary">Legal basis</dt>
+                <dd className="mt-1 text-muted">{r.basis}</dd>
+              </div>
+              <div>
+                <dt className="font-semibold text-primary">Retention</dt>
+                <dd className="mt-1 text-muted">{r.retention}</dd>
+              </div>
+            </dl>
+          </div>
+        ))}
+      </div>
+
+      <table className="hidden w-full text-left border border-line rounded-lg overflow-hidden md:table">
         <thead className="bg-surface">
           <tr>
             <th scope="col" className="p-4 font-semibold">
@@ -165,7 +187,7 @@ function DataTable({ rows }: { rows: readonly DataRow[] }) {
 
 export default function PrivacyPage() {
   return (
-    <main className="container-page py-24 max-w-3xl">
+    <main id="main" className="container-page py-16 max-w-3xl md:py-24">
       <h1 className="text-4xl font-bold">Privacy Policy</h1>
       <p className="mt-2 text-sm text-muted">Last updated: {LAST_UPDATED}</p>
 
@@ -237,8 +259,26 @@ export default function PrivacyPage() {
         </Link>
         .
       </p>
-      <div className="mt-6 overflow-x-auto">
-        <table className="w-full text-left border border-line rounded-xl overflow-hidden min-w-[500px]">
+      <div className="mt-6">
+        <div className="grid gap-4 md:hidden">
+          {SUBPROCESSORS.map((s) => (
+            <div key={s.name} className="rounded-lg border border-line bg-surface p-4">
+              <div className="font-semibold">{s.name}</div>
+              <dl className="mt-4 grid gap-3 text-sm">
+                <div>
+                  <dt className="font-semibold text-primary">Purpose</dt>
+                  <dd className="mt-1 text-muted">{s.purpose}</dd>
+                </div>
+                <div>
+                  <dt className="font-semibold text-primary">Region</dt>
+                  <dd className="mt-1 text-muted">{s.region}</dd>
+                </div>
+              </dl>
+            </div>
+          ))}
+        </div>
+
+        <table className="hidden w-full text-left border border-line rounded-lg overflow-hidden md:table">
           <thead className="bg-surface">
             <tr>
               <th scope="col" className="p-4 font-semibold">

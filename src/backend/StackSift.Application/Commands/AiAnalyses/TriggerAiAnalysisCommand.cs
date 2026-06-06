@@ -36,6 +36,13 @@ public class TriggerAiAnalysisCommandHandler(
         if (incident.OrganizationId != currentUser.OrganizationId)
             throw new NotFoundException(nameof(Incident), request.IncidentId);
 
+        if (incident.AiAnalysisId is { } existingId)
+        {
+            var existing = await uow.AiAnalyses.GetByIdAsync(existingId, ct);
+            if (existing is { Status: AiAnalysisStatus.Pending or AiAnalysisStatus.Processing })
+                return existing.ToDto(incident.ProjectId);
+        }
+
         var org = await uow.Organizations.GetByIdAsync(currentUser.OrganizationId, ct);
         if (org is not null)
         {
@@ -60,6 +67,7 @@ public class TriggerAiAnalysisCommandHandler(
         };
 
         await uow.AiAnalyses.AddAsync(analysis, ct);
+        incident.AiAnalysisId = analysis.Id;
         await uow.SaveChangesAsync(ct);
 
         jobRunner.Enqueue(analysis.Id);

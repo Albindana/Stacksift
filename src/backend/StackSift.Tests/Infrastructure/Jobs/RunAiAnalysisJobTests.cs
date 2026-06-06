@@ -123,6 +123,79 @@ public class RunAiAnalysisJobTests(PostgresContainerFixture postgres) : IAsyncLi
     }
 
     [Fact]
+    public async Task ExecuteAsync_EsSearch_UsesKeywordProjectFilterAndWindowBounds()
+    {
+        var incident = CreateIncident();
+        incident.StartedAt = new DateTimeOffset(2026, 1, 15, 12, 0, 0, TimeSpan.Zero);
+        var analysis = CreateAnalysis(AiAnalysisStatus.Pending, incident.Id);
+        _db.Incidents.Add(incident);
+        _db.AiAnalyses.Add(analysis);
+        await _db.SaveChangesAsync();
+
+        var logIds = Enumerable.Range(0, 5).Select(_ => Guid.NewGuid()).ToList();
+        var esFactory = new CapturingEsClientFactory();
+        var esClient = esFactory.Create(BuildSearchResponse(incident, logIds));
+
+        _vectorSearch.Setup(v => v.EmbedAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new float[1536]);
+        _aiService.Setup(a => a.AnalyzeAsync(It.IsAny<IncidentContext>(), It.IsAny<IReadOnlyList<SimilarIncident>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AiAnalysisResult("summary", "root cause", ["fix"], 0.9));
+
+        var sut = CreateJob(new OpenAiOptions { ApiKey = "sk-test" }, esClient);
+        await sut.ExecuteAsync(analysis.Id, CancellationToken.None);
+
+        var search = Assert.Single(esFactory.RequestBodies);
+        Assert.Contains("projectId.keyword", search);
+        Assert.Contains(incident.ProjectId.ToString(), search);
+        Assert.Contains("2026-01-15T11:55:00", search);
+        Assert.Contains("2026-01-15T12:05:00", search);
+
+        var updated = await _db.AiAnalyses.FindAsync(analysis.Id);
+        Assert.Equal(5, updated!.RelevantLogIds.Count);
+        Assert.NotNull(updated.Embedding);
+        foreach (var id in logIds)
+            Assert.Contains(id, updated.RelevantLogIds);
+    }
+
+    private static string BuildSearchResponse(Incident incident, IReadOnlyList<Guid> logIds)
+    {
+        var hits = logIds.Select((id, i) => new Dictionary<string, object?>
+        {
+            ["_index"] = $"stacksift-logs-{incident.OrganizationId}",
+            ["_id"] = id.ToString(),
+            ["_score"] = null,
+            ["_source"] = new Dictionary<string, object?>
+            {
+                ["id"] = id,
+                ["projectId"] = incident.ProjectId,
+                ["logSourceId"] = Guid.NewGuid(),
+                ["organizationId"] = incident.OrganizationId,
+                ["level"] = "Error",
+                ["message"] = $"error {i}",
+                ["timestamp"] = incident.StartedAt.UtcDateTime.ToString("O"),
+                ["metadata"] = new Dictionary<string, object?>(),
+            },
+        }).ToList();
+
+        var response = new Dictionary<string, object?>
+        {
+            ["took"] = 2,
+            ["timed_out"] = false,
+            ["_shards"] = new Dictionary<string, object?>
+            {
+                ["total"] = 1, ["successful"] = 1, ["skipped"] = 0, ["failed"] = 0,
+            },
+            ["hits"] = new Dictionary<string, object?>
+            {
+                ["total"] = new Dictionary<string, object?> { ["value"] = logIds.Count, ["relation"] = "eq" },
+                ["hits"] = hits,
+            },
+        };
+
+        return System.Text.Json.JsonSerializer.Serialize(response);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_GenericException_Rethrows()
     {
         var incident = CreateIncident();
@@ -140,10 +213,10 @@ public class RunAiAnalysisJobTests(PostgresContainerFixture postgres) : IAsyncLi
             sut.ExecuteAsync(analysis.Id, CancellationToken.None));
     }
 
-    private RunAiAnalysisJob CreateJob(OpenAiOptions openAiOpts)
+    private RunAiAnalysisJob CreateJob(OpenAiOptions openAiOpts, ElasticsearchClient? esClient = null)
     {
-        var esSettings = new ElasticsearchClientSettings(new Uri("http://localhost:9200"));
-        var esClient = new ElasticsearchClient(esSettings);
+        esClient ??= new ElasticsearchClient(
+            new ElasticsearchClientSettings(new Uri("http://localhost:9200")));
 
         return new RunAiAnalysisJob(
             _db,

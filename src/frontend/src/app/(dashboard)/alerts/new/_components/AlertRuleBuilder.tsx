@@ -30,7 +30,7 @@ const STEP_LABELS = ['Basic Info', 'Condition', 'Review'];
 
 const STEP_FIELDS: Record<number, (keyof AlertRuleFormInput)[]> = {
   0: ['name', 'projectId'],
-  1: ['condition'],
+  1: ['condition', 'severity'],
 };
 
 export function AlertRuleBuilder() {
@@ -49,6 +49,7 @@ export function AlertRuleBuilder() {
         threshold: 5,
         windowMinutes: 15,
       },
+      severity: 'medium',
     },
   });
 

@@ -47,6 +47,18 @@ export const CONDITION_DEFAULTS = {
 // Log levels for the PatternMatch filter dropdown.
 export const LOG_LEVEL_OPTIONS = ['trace', 'debug', 'info', 'warning', 'error', 'critical'] as const;
 
+// Severity options for the severity selector. Critical and High alerts also
+// send an immediate email to org admins — surfaced as helper text in the UI.
+export const ALERT_SEVERITY_OPTIONS = ['low', 'medium', 'high', 'critical'] as const;
+export type AlertSeverityOption = (typeof ALERT_SEVERITY_OPTIONS)[number];
+
+export const ALERT_SEVERITY_LABELS: Record<AlertSeverityOption, string> = {
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+  critical: 'Critical',
+};
+
 const conditionSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('ErrorRate'),
@@ -97,6 +109,7 @@ export const alertRuleFormSchema = z.object({
   // instead of strict UUID format so mock IDs always pass.
   projectId: z.string().min(1, 'Project is required'),
   condition: conditionSchema,
+  severity: z.enum(ALERT_SEVERITY_OPTIONS),
 });
 
 export type AlertRuleFormInput = z.infer<typeof alertRuleFormSchema>;
