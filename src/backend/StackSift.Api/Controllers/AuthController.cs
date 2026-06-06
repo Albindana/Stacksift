@@ -22,7 +22,10 @@ public sealed class AuthController(IMediator mediator) : ControllerBase
     /// </remarks>
     /// <param name="cmd">Email, password (≥12 chars + upper + lower + digit), display name, and "are you an owner" flag.</param>
     /// <param name="ct">Cancellation token.</param>
-    /// <returns>Created user id, email, role, organisation id (if any), and whether an invitation matched.</returns>
+    /// <returns>Created user id, email, role, organisation id (if any), whether an invitation
+    /// matched, whether the email is already verified (token-bearing registrations are created
+    /// verified — the invitation token proves inbox ownership), and whether a verification
+    /// email was actually sent (false when sending failed; the UI offers a resend).</returns>
     /// <response code="201">Registration succeeded.</response>
     /// <response code="400">Validation failed.</response>
     /// <response code="403">Registration is invite-only and no pending invitation matches the email.</response>

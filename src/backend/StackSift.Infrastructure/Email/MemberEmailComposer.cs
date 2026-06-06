@@ -33,6 +33,7 @@ public sealed class MemberEmailComposer(IOptions<AppOptions> appOptions) : IMemb
         DateTimeOffset expiresAt)
     {
         var acceptUrl = $"{_appUrl}/accept-invitation?token={Uri.EscapeDataString(token)}";
+        var registerUrl = $"{_appUrl}/register?invite={Uri.EscapeDataString(token)}";
         var expiresFormatted = expiresAt.UtcDateTime.ToString("u");
 
         var template = MailKitEmailService.LoadTemplate("Invitation.html");
@@ -41,6 +42,7 @@ public sealed class MemberEmailComposer(IOptions<AppOptions> appOptions) : IMemb
             .Replace("{{inviter}}", HtmlEscape(inviterDisplayName))
             .Replace("{{role}}", role.ToString())
             .Replace("{{acceptUrl}}", acceptUrl)
+            .Replace("{{registerUrl}}", registerUrl)
             .Replace("{{expiresAt}}", expiresFormatted);
 
         var subject = $"{inviterDisplayName} invited you to {organizationName} on StackSift";

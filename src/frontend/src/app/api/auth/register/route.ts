@@ -33,6 +33,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     isOwner: parsed.data.role === 'owner',
     captchaToken: parsed.data.captchaToken,
     honeypot: parsed.data.honeypot,
+    invitationToken: parsed.data.invitationToken,
   };
 
   let upstream: Response;
