@@ -47,7 +47,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   if (authConfig.mockMode) {
     // Mock mode: skip real Keycloak, redirect straight to callback
     // with a mock code and the state we just generated.
-    const callbackUrl = new URL(`${request.nextUrl.origin}/api/auth/callback`);
+    const callbackUrl = new URL(`${authConfig.appUrl}/api/auth/callback`);
     callbackUrl.searchParams.set('code', 'mock_code');
     callbackUrl.searchParams.set('state', state);
 

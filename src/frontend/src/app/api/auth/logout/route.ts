@@ -18,7 +18,10 @@ import { clearSessionCookie, readSessionCookie } from '@/app/lib/auth/session';
 // ---------------------------------------------------------------------------
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const { origin } = new URL(request.url);
+  // Use the configured public base URL, not the request origin — standalone
+  // Next derives request.url from the bind address (https://0.0.0.0:3000),
+  // which Keycloak rejects as an invalid post_logout_redirect_uri.
+  const origin = authConfig.appUrl;
   const session = readSessionCookie(request);
 
   const cookieHeader = clearSessionCookie();
