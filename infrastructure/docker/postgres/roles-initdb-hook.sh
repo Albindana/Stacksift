@@ -21,6 +21,10 @@ END
 \$\$;
 
 GRANT USAGE ON SCHEMA public TO stacksift_app, stacksift_owner;
+-- The migrator (EF Core) runs CREATE TABLE IF NOT EXISTS / CREATE TABLE as
+-- stacksift_owner, which needs CREATE on the schema — USAGE alone fails with
+-- 42501 "permission denied for schema public".
+GRANT CREATE ON SCHEMA public TO stacksift_owner;
 GRANT ALL ON ALL TABLES IN SCHEMA public TO stacksift_owner;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO stacksift_app;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO stacksift_app, stacksift_owner;
