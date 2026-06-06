@@ -14,5 +14,6 @@ public record AiAnalysisDto(
     List<Guid> RelevantLogIds,
     double? ConfidenceScore,
     DateTimeOffset CreatedAt,
-    DateTimeOffset? CompletedAt
+    DateTimeOffset? CompletedAt,
+    int ContextLogCount
 );

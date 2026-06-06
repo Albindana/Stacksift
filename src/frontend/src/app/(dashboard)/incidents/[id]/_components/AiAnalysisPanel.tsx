@@ -139,6 +139,18 @@ export function AiAnalysisPanel({
         {/* ── Completed: render all fields ──────────────────────────────── */}
         {state === 'completed' && aiAnalysis && (
           <div className="flex flex-col gap-5">
+            {/* Degraded-context warning: the job found no logs to analyze */}
+            {aiAnalysis.contextLogCount === 0 && (
+              <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-300">
+                <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span>
+                  Analyzed without log context — no logs were found around the
+                  incident start time. Check that ingestion is working and
+                  timestamps line up, then retry the analysis.
+                </span>
+              </div>
+            )}
+
             {/* Confidence score */}
             {aiAnalysis.confidenceScore !== null && (
               <div className="flex flex-col gap-1">

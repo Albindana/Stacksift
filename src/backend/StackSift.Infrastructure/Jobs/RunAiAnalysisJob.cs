@@ -93,6 +93,7 @@ public sealed class RunAiAnalysisJob(
             }
 
             analysis.RelevantLogIds = contributingIds;
+            analysis.ContextLogCount = contributingIds.Count;
             await db.SaveChangesAsync(ct);
 
             IReadOnlyList<SimilarIncident> similar = [];
@@ -129,7 +130,9 @@ public sealed class RunAiAnalysisJob(
 
             await alertHub.BroadcastAiAnalysisCompletedAsync(
                 analysis.ToDto(incident.ProjectId), ct);
-            metrics.RecordAiAnalysis("completed", stopwatch.Elapsed.TotalSeconds);
+            metrics.RecordAiAnalysis(
+                contributingIds.Count == 0 ? "completed_degraded" : "completed",
+                stopwatch.Elapsed.TotalSeconds);
 
             logger.LogInformation(
                 "RunAiAnalysisJob: {Id} completed — {Fixes} fixes, confidence {Confidence:P0}",

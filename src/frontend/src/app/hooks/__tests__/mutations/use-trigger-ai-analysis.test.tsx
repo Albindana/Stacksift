@@ -57,6 +57,7 @@ const ANALYSIS: AiAnalysisFromSchema = {
   confidenceScore: null,
   createdAt: '2026-05-19T00:00:00+00:00',
   completedAt: null,
+  contextLogCount: 0,
 };
 
 function makeAxiosError(status: number): AxiosError {

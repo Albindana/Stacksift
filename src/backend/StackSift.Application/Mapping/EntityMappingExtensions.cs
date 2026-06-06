@@ -35,7 +35,7 @@ public static class EntityMappingExtensions
     public static AiAnalysisDto ToDto(this AiAnalysis a, Guid projectId) =>
         new(a.Id, a.IncidentId, projectId, a.OrganizationId, a.Status, a.Summary, a.RootCause,
             a.SuggestedFixes ?? [], a.RelevantLogIds ?? [], a.ConfidenceScore,
-            a.CreatedAt, a.CompletedAt);
+            a.CreatedAt, a.CompletedAt, a.ContextLogCount);
 
     public static MemberDto ToMemberDto(this User u, string? invitedByDisplayName = null) =>
         new(u.Id, u.Email, u.DisplayName, u.Role,
