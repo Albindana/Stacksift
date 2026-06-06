@@ -28,11 +28,14 @@ certIssuer:
 #     picks up the mobile-UX/light-mode work from PR #142.
 #   - postgres: image content unchanged; keep the prior pin to avoid a
 #     pointless StatefulSet restart.
+#   - frontend sha-26a8757: fix/logout-redirect-origin (auth routes use the
+#     configured app URL instead of the 0.0.0.0 request origin) — dmdailydeals
+#     dispatch build; tag stays valid after the branch merges to develop.
 images:
   api:       { tag: sha-7c37e80 }
   migrator:  { tag: sha-7c37e80 }
   postgres:  { tag: sha-2cc40a3 }
-  frontend:  { tag: sha-7c37e80 }
+  frontend:  { tag: sha-26a8757 }
   marketing: { tag: sha-7c37e80 }
 
 # Minimal in-namespace Prometheus + the 4 Gate-2 alerts (needs Prometheus-Operator
