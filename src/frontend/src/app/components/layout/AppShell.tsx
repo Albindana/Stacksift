@@ -54,7 +54,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   } = useUIStore();
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex h-screen">
       {/* Mobile drawer overlay — sits above everything */}
       <MobileDrawer
         open={mobileDrawerOpen}

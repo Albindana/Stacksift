@@ -111,7 +111,7 @@ export function Sidebar({ collapsed, onToggle, isMobile = false, onNavClick }: S
 
   return (
     <aside
-      className="flex h-full flex-col bg-surface border-r border-line"
+      className="flex h-full w-full flex-col bg-surface border-r border-line"
       aria-label="Main navigation"
     >
       {/* ── Logo + Org Name ─────────────────────────────────────────────── */}
