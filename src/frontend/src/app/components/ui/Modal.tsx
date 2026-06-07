@@ -194,7 +194,7 @@ export function Modal({
             </div>
 
             {/* Body */}
-            <div className="px-6 py-4">{children}</div>
+            <div className="max-h-[calc(100vh-12rem)] overflow-y-auto px-6 py-4">{children}</div>
           </motion.div>
         </motion.div>
       )}

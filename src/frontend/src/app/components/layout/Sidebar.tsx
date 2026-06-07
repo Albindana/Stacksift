@@ -111,7 +111,7 @@ export function Sidebar({ collapsed, onToggle, isMobile = false, onNavClick }: S
 
   return (
     <aside
-      className="flex h-full flex-col bg-surface border-r border-line"
+      className="flex h-full w-full flex-col bg-surface border-r border-line"
       aria-label="Main navigation"
     >
       {/* ── Logo + Org Name ─────────────────────────────────────────────── */}
@@ -125,8 +125,8 @@ export function Sidebar({ collapsed, onToggle, isMobile = false, onNavClick }: S
           <Image
             src="/stacksifticon.png"
             alt="StackSift logo"
-            width={32}
-            height={32}
+            width={40}
+            height={40}
             className="h-10 w-auto shrink-0 rounded"
           />
           {!collapsed && (

@@ -178,9 +178,8 @@ export function Dropdown({
             id={menuId}
             role="menu"
             className={cn(
-              'absolute z-50 mt-1 min-w-[10rem] rounded-md border py-1 shadow-lg',
-              'bg-white border-zinc-200',
-              'dark:bg-zinc-900 dark:border-zinc-700',
+              'absolute z-50 mt-1 min-w-[10rem] max-h-[60vh] overflow-y-auto rounded-md border py-1 shadow-lg',
+              'bg-surface border-line',
               align === 'right' ? 'right-0' : 'left-0',
             )}
           >
@@ -212,9 +211,9 @@ export function Dropdown({
                     item.disabled
                       ? 'cursor-not-allowed opacity-40'
                       : [
-                          'cursor-pointer text-zinc-700 dark:text-zinc-300',
-                          'hover:bg-zinc-100 dark:hover:bg-zinc-800',
-                          'focus:outline-none focus:bg-zinc-100 dark:focus:bg-zinc-800',
+                          'cursor-pointer text-primary',
+                          'hover:bg-elevated',
+                          'focus:outline-none focus:bg-elevated',
                         ],
                   )}
                 >

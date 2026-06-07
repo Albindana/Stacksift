@@ -88,7 +88,7 @@ export function LogTable({ query, appendLog: _appendLog, onResetFilters }: LogTa
   const virtualItems = virtualizer.getVirtualItems();
 
   return (
-    <div className="flex flex-col rounded-lg border border-line bg-zinc-950 overflow-hidden">
+    <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-line bg-zinc-950 overflow-hidden">
       {/* ── Column headers ────────────────────────────────────────────────── */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-line bg-surface text-xs text-muted font-medium shrink-0 select-none">
         <div className="w-3" />
@@ -129,7 +129,7 @@ export function LogTable({ query, appendLog: _appendLog, onResetFilters }: LogTa
       {!isLoading && allRows.length > 0 && (
         <div
           ref={parentRef}
-          className="h-[calc(100vh-22rem)] min-h-64 overflow-y-auto"
+          className="flex-1 min-h-64 overflow-y-auto"
           role="log"
           aria-label="Log entries"
           aria-live="polite"

@@ -113,7 +113,7 @@ export function AlertRulesView() {
         </Link>
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-line bg-surface">
+      <div className="overflow-x-auto rounded-lg border border-line bg-surface">
         {rules.length === 0 ? (
           <EmptyState
             title="No alert rules"
@@ -121,7 +121,7 @@ export function AlertRulesView() {
             className="min-h-[260px]"
           />
         ) : (
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[820px] text-sm">
             <thead>
               <tr className="border-b border-line bg-elevated text-xs uppercase tracking-wide text-muted">
                 <th className="px-4 py-3 text-left">Name</th>
@@ -137,9 +137,9 @@ export function AlertRulesView() {
             <tbody>
               {rules.map((rule) => (
                 <tr key={rule.id} className="border-b border-line last:border-b-0">
-                  <td className="px-4 py-3 font-medium text-primary">{rule.name}</td>
+                  <td className="max-w-[220px] truncate px-4 py-3 font-medium text-primary" title={rule.name}>{rule.name}</td>
                   <td className="px-4 py-3 capitalize text-muted">{rule.condition}</td>
-                  <td className="px-4 py-3 text-muted">{formatRuleValue(rule)}</td>
+                  <td className="max-w-[220px] truncate px-4 py-3 text-muted" title={formatRuleValue(rule)}>{formatRuleValue(rule)}</td>
                   <td className="px-4 py-3">
                     <select
                       value={rule.severity}
