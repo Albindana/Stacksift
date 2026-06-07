@@ -85,7 +85,7 @@ export function AlertConditionStep({ form }: Props) {
         <legend className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-3">
           Condition type
         </legend>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {ALERT_CONDITION_TYPES.map((type) => {
             const isSelected = type === conditionType;
             return (
@@ -212,7 +212,7 @@ export function AlertConditionStep({ form }: Props) {
         <legend className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-3">
           Severity
         </legend>
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {ALERT_SEVERITY_OPTIONS.map((option) => {
             const isSelected = option === severity;
             return (

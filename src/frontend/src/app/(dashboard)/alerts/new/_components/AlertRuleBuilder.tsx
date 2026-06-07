@@ -87,7 +87,7 @@ export function AlertRuleBuilder() {
   };
 
   return (
-    <div className="rounded-xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+    <div className="rounded-xl border border-line bg-surface p-4 shadow-sm sm:p-6 md:p-8">
       <FormStepperProvider value={stepperValue}>
         <FormStepper
           onNext={handleNext}
