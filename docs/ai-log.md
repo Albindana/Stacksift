@@ -11,6 +11,12 @@
 | Total estimated time saved | ~133 hours |
 | Projects covered | PM, FE (Sprint 1–2), BE (Sprint 3–4), Payments (PAY-01→08) |
 
+**UI bug-fix round 1 — 2026-06-07**
+
+| Date | Tool | Prompt Summary | Output Quality | Time Saved | Lessons Learned |
+|------|------|---------------|---------------|------------|-----------------|
+| 2026-06-07 | Claude Code (Opus 4.8 [1M context]) | UI bug hunt + fix round 1: investigated two reported dashboard bugs (visible gap between sidebar and TopBar; Alert Rules UI overflowing the viewport) via 3 parallel Explore agents (alerts feature, shell chrome, dashboard-wide sweep), verified every finding against the code, and produced `zhelpers/DEPLOY/to-fix/UI-bugs-1.md` (15 confirmed bugs + 4 documented false positives + 42-task phased checklist). Root causes: `Sidebar.tsx` `<aside>` had no width class inside the fixed-width framer-motion wrapper (content-sized → gap), and `AppShell` used `min-h-screen` so `<main>`'s `overflow-y-auto` never constrained — the whole document scrolled. Implemented all 4 phases on `fix/ui-shell-and-alerts`: shell scroll-model fix, alerts table `overflow-x-auto` + cell truncation, responsive grids in the rule builder, Modal/Dropdown max-height + theme-token sweep (Card/Dropdown/AlertRuleBuilder off hardcoded zinc), LogTable flex-fill height replacing fragile `calc(100vh-22rem)`, Breadcrumb truncation, logo intrinsic-size fix. | (filled at session end) | ~6 hours | Agent findings need human verification: 1 of 3 agents flagged `max-w-2xl` as a critical overflow (false — max-width only caps, never widens); documenting false positives in the plan prevents future "fixes". A single missing width class on a flex child inside a fixed-width animated wrapper produces a layout gap that looks like a much deeper problem. `min-h-screen` + inner `overflow-y-auto` is a contradiction — the inner scroll container only works when the root is height-constrained (`h-screen`). |
+
 **Payments sprint addition — 2026-05-20 → 2026-05-21**
 
 | Date | Tool | Prompt Summary | Output Quality | Time Saved | Lessons Learned |
