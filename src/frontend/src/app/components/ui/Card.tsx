@@ -12,7 +12,7 @@ export function CardHeader({ className, ...props }: CardHeaderProps) {
   return (
     <div
       className={cn(
-        'px-6 py-4 border-b border-zinc-200 dark:border-zinc-800',
+        'px-6 py-4 border-b border-line',
         className,
       )}
       {...props}
@@ -41,7 +41,7 @@ export function CardFooter({ className, ...props }: CardFooterProps) {
   return (
     <div
       className={cn(
-        'px-6 py-4 border-t border-zinc-200 dark:border-zinc-800',
+        'px-6 py-4 border-t border-line',
         className,
       )}
       {...props}
@@ -89,7 +89,7 @@ export function Card({ className, hoverable = false, ...props }: CardProps) {
   return (
     <div
       className={cn(
-        'rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900',
+        'rounded-lg border border-line bg-surface',
         'overflow-hidden',
         hoverable && [
           'cursor-pointer transition-all duration-150',

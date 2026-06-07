@@ -147,7 +147,7 @@ export function IncidentsView() {
       </div>
 
       {/* Table */}
-      <div className="rounded-lg border border-line overflow-hidden">
+      <div className="rounded-lg border border-line overflow-x-auto">
         {isLoading && (
           <div className="p-4 flex flex-col gap-2">
             {Array.from({ length: 8 }).map((_, i) => (
@@ -174,7 +174,7 @@ export function IncidentsView() {
         )}
 
         {!isLoading && !isError && incidents.length > 0 && (
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[640px] text-sm">
             <thead>
               <tr className="border-b border-line bg-surface text-xs text-muted font-medium">
                 <th className="px-4 py-2.5 text-left w-32">Status</th>

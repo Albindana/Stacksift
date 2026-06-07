@@ -125,8 +125,8 @@ export function Sidebar({ collapsed, onToggle, isMobile = false, onNavClick }: S
           <Image
             src="/stacksifticon.png"
             alt="StackSift logo"
-            width={32}
-            height={32}
+            width={40}
+            height={40}
             className="h-10 w-auto shrink-0 rounded"
           />
           {!collapsed && (

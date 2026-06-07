@@ -130,7 +130,7 @@ export function LiveLogStream() {
       {/* Scrollable log list */}
       <div
         className={cn(
-          'h-[28rem] overflow-y-auto rounded-lg border border-line bg-zinc-950 p-3',
+          'h-[min(28rem,calc(100vh-16rem))] overflow-y-auto rounded-lg border border-line bg-zinc-950 p-3',
           'text-xs font-mono',
         )}
       >
