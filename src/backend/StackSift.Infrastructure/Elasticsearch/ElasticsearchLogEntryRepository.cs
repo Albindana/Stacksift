@@ -1,5 +1,6 @@
 using System.Text;
 using Elastic.Clients.Elasticsearch;
+using Elastic.Clients.Elasticsearch.Core.Bulk;
 using Elastic.Clients.Elasticsearch.QueryDsl;
 using StackSift.Domain.Entities;
 using StackSift.Domain.Interfaces;
@@ -145,6 +146,78 @@ public class ElasticsearchLogEntryRepository(
         if (response.Errors)
             throw new InvalidOperationException(
                 $"ES bulk index had errors: {response.DebugInformation}");
+    }
+
+    public async Task BulkIndexForOrgAsync(
+        Guid organizationId, IList<LogEntry> entries, CancellationToken ct = default)
+    {
+        if (entries.Count == 0) return;
+
+        // Explicit doc IDs make message redelivery an idempotent upsert; WaitFor
+        // ensures alert-window count queries issued right after see this batch.
+        var ops = entries
+            .Select(LogEntryDocument.FromDomain)
+            .Select(doc => (IBulkOperation)new BulkIndexOperation<LogEntryDocument>(doc) { Id = doc.Id.ToString() })
+            .ToList();
+
+        var response = await client.BulkAsync(new BulkRequest(IndexForOrg(organizationId))
+        {
+            Operations = ops,
+            Refresh = Refresh.WaitFor,
+        }, ct);
+
+        if (response.Errors || !response.IsValidResponse)
+            throw new InvalidOperationException(
+                $"ES bulk index had errors: {response.DebugInformation}");
+    }
+
+    public async Task<long> CountByProjectSinceAsync(
+        Guid organizationId, Guid projectId, Domain.Enums.LogLevel? level,
+        DateTimeOffset since, CancellationToken ct = default)
+    {
+        var filters = new List<Query>
+        {
+            new()
+            {
+                Term = new TermQuery
+                {
+                    // .keyword subfield — the analyzed base field tokenizes UUIDs
+                    Field = new Field("projectId.keyword"),
+                    Value = FieldValue.String(projectId.ToString())
+                }
+            },
+            new()
+            {
+                Range = new DateRangeQuery
+                {
+                    Field = new Field("timestamp"),
+                    Gte = since.ToString("o")
+                }
+            },
+        };
+
+        if (level.HasValue)
+            filters.Add(new Query
+            {
+                Term = new TermQuery
+                {
+                    Field = new Field("level.keyword"),
+                    Value = FieldValue.String(level.Value.ToString())
+                }
+            });
+
+        var response = await client.CountAsync(new CountRequest(IndexForOrg(organizationId))
+        {
+            Query = new Query { Bool = new BoolQuery { Filter = filters } }
+        }, ct);
+
+        if (!response.IsValidResponse)
+        {
+            if (IsIndexNotFound(response)) return 0;
+            throw new InvalidOperationException($"ES count failed: {response.DebugInformation}");
+        }
+
+        return response.Count;
     }
 
     public async Task<long> GetTotalTodayByOrganizationIdAsync(

@@ -1,5 +1,3 @@
-using Elastic.Clients.Elasticsearch;
-using Elastic.Clients.Elasticsearch.Core.Bulk;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -7,17 +5,16 @@ using StackSift.Application.Interfaces;
 using StackSift.Application.Messages;
 using StackSift.Domain.Entities;
 using StackSift.Domain.Enums;
-using StackSift.Infrastructure.Elasticsearch.Documents;
 using StackSift.Application.Mapping;
 using StackSift.Infrastructure.Persistence;
 using StackSift.Domain.Interfaces;
-using LogLevel = StackSift.Domain.Enums.LogLevel;
+using StackSift.Domain.Interfaces.Repositories;
 
 namespace StackSift.Infrastructure.Messaging.Consumers;
 
 public sealed class LogBatchConsumer(
     AppDbContext db,
-    ElasticsearchClient esClient,
+    ILogEntryRepository logEntries,
     ICacheService cache,
     IPublishEndpoint publishEndpoint,
     IAlertHubService alertHub,
@@ -53,8 +50,9 @@ public sealed class LogBatchConsumer(
             Metadata = dto.Metadata ?? [],
         }).ToList();
 
-        // 2. Bulk-index to Elasticsearch (idempotent: ES Index op upserts by document ID)
-        await BulkIndexToEsAsync(entries, msg.OrganizationId, ct);
+        // 2. Bulk-index to Elasticsearch (idempotent upsert; waits for the batch to
+        // become searchable so the alert-window counts below can see it)
+        await logEntries.BulkIndexForOrgAsync(msg.OrganizationId, entries, ct);
 
         // 2b. Broadcast each indexed entry to the project's SignalR group.
         // Done after persistence so the UI never sees an entry we failed to store.
@@ -77,7 +75,14 @@ public sealed class LogBatchConsumer(
 
         foreach (var rule in rules)
         {
-            if (!EvaluateRule(rule, entries, out var firstMatchMessage))
+            // A rule that fired re-arms only after its window elapses; without this
+            // a sustained breach would fire once per batch (seconds apart).
+            var cooldownKey = $"alert-rule-cooldown:{rule.Id}";
+            if (await cache.GetAsync<string>(cooldownKey, ct) is not null)
+                continue;
+
+            var (fired, firstMatchMessage) = await EvaluateRuleAsync(rule, msg, entries, ct);
+            if (!fired)
                 continue;
 
             // 5. Create Alert
@@ -128,6 +133,9 @@ public sealed class LogBatchConsumer(
             await db.SaveChangesAsync(ct);
             anyAlertCreated = true;
 
+            // Arm only after the alert is durably stored, so a failed save retries cleanly
+            await cache.SetAsync(cooldownKey, "1", TimeSpan.FromMinutes(EffectiveWindowMinutes(rule)), ct);
+
             // 7. Publish AlertFiredMessage for downstream (SignalR broadcast, etc.)
             await publishEndpoint.Publish(
                 new AlertFiredMessage(msg.OrganizationId, msg.ProjectId, alert.Id, incidentId, rule.Severity),
@@ -151,74 +159,47 @@ public sealed class LogBatchConsumer(
 
     // ── Rule evaluation ──────────────────────────────────────────────────────
 
-    private static bool EvaluateRule(AlertRule rule, List<LogEntry> entries, out string? firstMatchMessage)
+    private async Task<(bool Fired, string? FirstMatchMessage)> EvaluateRuleAsync(
+        AlertRule rule, LogBatchMessage msg, List<LogEntry> entries, CancellationToken ct)
     {
-        firstMatchMessage = null;
-
         return rule.Condition switch
         {
-            AlertRuleCondition.Threshold => EvaluateThreshold(rule, entries, out firstMatchMessage),
-            AlertRuleCondition.Pattern => EvaluatePattern(rule, entries, out firstMatchMessage),
-            AlertRuleCondition.Anomaly or AlertRuleCondition.Absence => false, // deferred to future sprint
-            _ => false
+            AlertRuleCondition.Threshold => await EvaluateThresholdAsync(rule, msg, entries, ct),
+            AlertRuleCondition.Pattern => EvaluatePattern(rule, entries),
+            AlertRuleCondition.Anomaly or AlertRuleCondition.Absence => (false, null), // deferred to future sprint
+            _ => (false, null)
         };
     }
 
-    private static bool EvaluateThreshold(AlertRule rule, List<LogEntry> entries, out string? firstMatchMessage)
+    private async Task<(bool Fired, string? FirstMatchMessage)> EvaluateThresholdAsync(
+        AlertRule rule, LogBatchMessage msg, List<LogEntry> entries, CancellationToken ct)
     {
-        firstMatchMessage = null;
-        if (!rule.Threshold.HasValue) return false;
+        if (!rule.Threshold.HasValue) return (false, null);
 
-        var matching = entries
-            .Where(e => rule.LogLevel is null || e.Level == rule.LogLevel)
-            .ToList();
+        // Only batches that contribute a matching entry can trigger the rule;
+        // unrelated traffic must not re-fire it off old window contents.
+        var firstMatch = entries.FirstOrDefault(e => rule.LogLevel is null || e.Level == rule.LogLevel);
+        if (firstMatch is null) return (false, null);
 
-        if (matching.Count >= (int)rule.Threshold.Value)
-        {
-            firstMatchMessage = matching[0].Message;
-            return true;
-        }
-        return false;
+        var windowStart = DateTimeOffset.UtcNow.AddMinutes(-EffectiveWindowMinutes(rule));
+        var count = await logEntries.CountByProjectSinceAsync(
+            msg.OrganizationId, msg.ProjectId, rule.LogLevel, windowStart, ct);
+
+        return count >= (long)rule.Threshold.Value
+            ? (true, firstMatch.Message)
+            : (false, null);
     }
 
-    private static bool EvaluatePattern(AlertRule rule, List<LogEntry> entries, out string? firstMatchMessage)
+    private static (bool Fired, string? FirstMatchMessage) EvaluatePattern(AlertRule rule, List<LogEntry> entries)
     {
-        firstMatchMessage = null;
-        if (string.IsNullOrEmpty(rule.Pattern)) return false;
+        if (string.IsNullOrEmpty(rule.Pattern)) return (false, null);
 
         var hit = entries.FirstOrDefault(e =>
             e.Message.Contains(rule.Pattern, StringComparison.OrdinalIgnoreCase));
 
-        if (hit is not null)
-        {
-            firstMatchMessage = hit.Message;
-            return true;
-        }
-        return false;
+        return hit is not null ? (true, hit.Message) : (false, null);
     }
 
-    // ── Elasticsearch bulk index ─────────────────────────────────────────────
-
-    private async Task BulkIndexToEsAsync(List<LogEntry> entries, Guid organizationId, CancellationToken ct)
-    {
-        if (entries.Count == 0) return;
-
-        var index = $"stacksift-logs-{organizationId}";
-        var docs = entries.Select(LogEntryDocument.FromDomain).ToList();
-
-        // Use explicit doc IDs for idempotent upsert semantics
-        var ops = docs
-            .Select(doc => (IBulkOperation)new BulkIndexOperation<LogEntryDocument>(doc) { Id = doc.Id.ToString() })
-            .ToList();
-
-        var response = await esClient.BulkAsync(new BulkRequest(index) { Operations = ops }, ct);
-
-        if (response.Errors)
-        {
-            logger.LogError("ES bulk index errors: {Info}", response.DebugInformation);
-            throw new InvalidOperationException($"Elasticsearch bulk index failed: {response.DebugInformation}");
-        }
-
-        logger.LogDebug("Indexed {Count} log entries to {Index}", docs.Count, index);
-    }
+    // WindowMinutes is validated to [1, 1440] on write; clamp defensively for legacy rows
+    private static int EffectiveWindowMinutes(AlertRule rule) => Math.Max(1, rule.WindowMinutes);
 }
