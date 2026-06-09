@@ -77,20 +77,24 @@ chart; it consumes the cluster's pre-installed **ECK** and **cert-manager**).
 7. *(Only if `n8n.enabled=true`)* n8n basic-auth + the workflow's OpenAI/Slack
    secrets (the alert-triage workflow reads these via `{{$env...}}`):
    ```bash
-   OK=$(grep '^OPENAI_API_KEY=' ~/.config/stacksift-deploy/secrets.env | cut -d= -f2-)
+   # NOTE: the OpenAI key is stored .NET-config style (OpenAI__ApiKey) in secrets.env,
+   # but the n8n container reads it as OPENAI_API_KEY — so source one, store as the other.
+   OK=$(grep '^OpenAI__ApiKey=' ~/.config/stacksift-deploy/secrets.env | cut -d= -f2-)
    SW=$(grep '^SLACK_WEBHOOK_URL=' ~/.config/stacksift-deploy/secrets.env | cut -d= -f2-)
+   NP=$(grep '^N8N_PASSWORD=' ~/.config/stacksift-deploy/secrets.env | cut -d= -f2-)
    kubectl -n project-07 create secret generic stacksift-n8n \
      --from-literal=N8N_BASIC_AUTH_USER="admin" \
-     --from-literal=N8N_BASIC_AUTH_PASSWORD="$(openssl rand -base64 24)" \
+     --from-literal=N8N_BASIC_AUTH_PASSWORD="$NP" \
      --from-literal=OPENAI_API_KEY="$OK" \
      --from-literal=SLACK_WEBHOOK_URL="$SW"
    ```
    The Slack Incoming Webhook for `#stacksift-alerts` is set up per `docs/n8n-automation.md`.
 8. *(Only if `grafana.enabled=true`)* Grafana admin credentials:
    ```bash
+   GP=$(grep '^GRAFANA_ADMIN_PASSWORD=' ~/.config/stacksift-deploy/secrets.env | cut -d= -f2-)
    kubectl -n project-07 create secret generic stacksift-grafana-admin \
      --from-literal=admin-user="admin" \
-     --from-literal=admin-password="$(openssl rand -base64 24)"
+     --from-literal=admin-password="$GP"
    ```
 9. *(Only if `alertmanager.receiver.slack.enabled=true`)* the Slack receiver URL
    (the default routes via n8n and does **not** need this):
