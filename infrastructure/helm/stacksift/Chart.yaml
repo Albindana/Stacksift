@@ -1,10 +1,13 @@
 apiVersion: v2
 name: stacksift
 description: >-
-  StackSift — AI-powered SRE / log-analysis platform. Single-namespace deploy
-  (no cluster-wide operators required beyond ECK + cert-manager, which are
-  pre-installed on the target cluster). Targets namespace project-07 on
-  life-cluster; closed-beta (Gate 2).
+  StackSift — AI-powered SRE / log-analysis platform. Single-namespace deploy.
+  Installs nothing cluster-wide; the gated features consume operators that are
+  pre-installed on the target cluster via namespaced CRs only: cert-manager
+  (TLS Issuer), the Prometheus Operator (Prometheus / Alertmanager /
+  ServiceMonitor / PrometheusRule / AlertmanagerConfig), Longhorn (storage),
+  and Calico (NetworkPolicy). Targets namespace project-07 on life-cluster;
+  closed-beta (Gate 2).
 type: application
 version: 0.1.0
 appVersion: "2cc40a3"
