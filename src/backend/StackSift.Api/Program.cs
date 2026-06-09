@@ -348,6 +348,10 @@ builder.Services.AddRateLimiter(options =>
 });
 
 builder.Services.AddSignalR()
+    // Hub payloads must serialize enums the same way MVC does (camelCase
+    // strings) — without this, LogLevel/AlertSeverity reach clients as ints.
+    .AddJsonProtocol(options =>
+        options.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase)))
     .AddStackExchangeRedis(
         builder.Configuration["Redis:ConnectionString"] ?? "localhost:6379");
 

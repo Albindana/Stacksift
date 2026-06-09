@@ -39,13 +39,31 @@ function makeMockConnection() {
   };
 }
 
-function makeLogEntry(id: string): LogEntry {
+/**
+ * Deterministic UUID from a short label — live payloads are Zod-validated
+ * (id must be a uuid), but tests still want readable, stable identifiers.
+ */
+function uuidFor(label: string): string {
+  let h = 0x811c9dc5; // FNV-1a over the label — stable and collision-free here
+  for (let i = 0; i < label.length; i++) {
+    h ^= label.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  const hex =
+    h.toString(16).padStart(8, '0') + label.length.toString(16).padStart(4, '0');
+  return `00000000-0000-4000-8000-${hex}`;
+}
+
+const PROJECT_ID = uuidFor('proj-1');
+const LOG_SOURCE_ID = uuidFor('src-1');
+
+function makeLogEntry(label: string): LogEntry {
   return {
-    id,
-    projectId: 'proj-1',
-    logSourceId: 'src-1',
+    id: uuidFor(label),
+    projectId: PROJECT_ID,
+    logSourceId: LOG_SOURCE_ID,
     level: 'info',
-    message: `Test log ${id}`,
+    message: `Test log ${label}`,
     timestamp: new Date().toISOString(),
     traceId: null,
     spanId: null,
@@ -120,7 +138,7 @@ describe('useLiveLogStream — live appending (AC3)', () => {
       handler(makeLogEntry('e1'));
     });
     expect(result.current.entries).toHaveLength(1);
-    expect(result.current.entries[0].id).toBe('e1');
+    expect(result.current.entries[0].id).toBe(uuidFor('e1'));
   });
 
   it('accumulates multiple entries in order', async () => {
@@ -137,7 +155,9 @@ describe('useLiveLogStream — live appending (AC3)', () => {
       handler(makeLogEntry('e3'));
     });
     expect(result.current.entries).toHaveLength(3);
-    expect(result.current.entries.map((e) => e.id)).toEqual(['e1', 'e2', 'e3']);
+    expect(result.current.entries.map((e) => e.id)).toEqual(
+      [uuidFor('e1'), uuidFor('e2'), uuidFor('e3')],
+    );
   });
 });
 
@@ -236,7 +256,46 @@ describe('useLiveLogStream — entry cap', () => {
     expect(result.current.entries).toHaveLength(MAX_LOG_ENTRIES);
     // Should keep the newest entries (trimmed from front)
     expect(result.current.entries[MAX_LOG_ENTRIES - 1].id).toBe(
-      `e${MAX_LOG_ENTRIES + 4}`,
+      uuidFor(`e${MAX_LOG_ENTRIES + 4}`),
+    );
+  });
+});
+
+describe('useLiveLogStream — payload validation & dedupe', () => {
+  it('drops malformed payloads (e.g. numeric level from a serialization drift)', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const conn = makeMockConnection();
+    const { result } = renderHook(() =>
+      useLiveLogStream({ connectionFactory: () => conn }),
+    );
+    await act(async () => { await conn.start.mock.results[0]?.value; });
+
+    const handler = getLogHandler(conn);
+    act(() => {
+      handler({ ...makeLogEntry('e1'), level: 3 } as unknown as LogEntry);
+    });
+
+    expect(result.current.entries).toHaveLength(0);
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('ignores a duplicate entry id (redelivered batch re-broadcast)', async () => {
+    const conn = makeMockConnection();
+    const { result } = renderHook(() =>
+      useLiveLogStream({ connectionFactory: () => conn }),
+    );
+    await act(async () => { await conn.start.mock.results[0]?.value; });
+
+    const handler = getLogHandler(conn);
+    act(() => {
+      handler(makeLogEntry('e1'));
+      handler(makeLogEntry('e1'));
+      handler(makeLogEntry('e2'));
+    });
+
+    expect(result.current.entries.map((e) => e.id)).toEqual(
+      [uuidFor('e1'), uuidFor('e2')],
     );
   });
 });

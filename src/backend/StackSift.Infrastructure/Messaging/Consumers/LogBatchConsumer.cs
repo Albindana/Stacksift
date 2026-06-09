@@ -33,10 +33,13 @@ public sealed class LogBatchConsumer(
             "Processing LogBatchMessage: {Count} entries for project {ProjectId}",
             msg.Entries.Count, msg.ProjectId);
 
-        // 1. Map DTOs → LogEntry domain entities with stable IDs for idempotent upsert
-        var entries = msg.Entries.Select(dto => new LogEntry
+        // 1. Map DTOs → LogEntry domain entities. IDs are derived from the message
+        // identity so a redelivered batch upserts the same ES documents and the
+        // frontend can dedupe re-broadcasts, instead of minting fresh duplicates.
+        var batchId = context.MessageId ?? Guid.NewGuid();
+        var entries = msg.Entries.Select((dto, i) => new LogEntry
         {
-            Id = Guid.NewGuid(),
+            Id = DeterministicEntryId(batchId, i),
             OrganizationId = msg.OrganizationId,
             ProjectId = msg.ProjectId,
             LogSourceId = msg.LogSourceId,
@@ -50,14 +53,16 @@ public sealed class LogBatchConsumer(
             Metadata = dto.Metadata ?? [],
         }).ToList();
 
-        // 2. Bulk-index to Elasticsearch (idempotent upsert; waits for the batch to
-        // become searchable so the alert-window counts below can see it)
-        await logEntries.BulkIndexForOrgAsync(msg.OrganizationId, entries, ct);
-
-        // 2b. Broadcast each indexed entry to the project's SignalR group.
-        // Done after persistence so the UI never sees an entry we failed to store.
+        // 2. Broadcast to the project's SignalR group BEFORE indexing — the live
+        // feed should not pay the ES write + refresh latency. If indexing fails
+        // below, the redelivered batch re-broadcasts the same entry IDs and the
+        // frontend dedupes them.
         foreach (var entry in entries)
             await alertHub.BroadcastLogEntryAsync(entry.ToDto(), ct);
+
+        // 2b. Bulk-index to Elasticsearch (idempotent upsert; waits for the batch
+        // to become searchable so the alert-window counts below can see it)
+        await logEntries.BulkIndexForOrgAsync(msg.OrganizationId, entries, ct);
 
         metrics.RecordLogsIngested(msg.OrganizationId, entries.Count);
 
@@ -202,4 +207,18 @@ public sealed class LogBatchConsumer(
 
     // WindowMinutes is validated to [1, 1440] on write; clamp defensively for legacy rows
     private static int EffectiveWindowMinutes(AlertRule rule) => Math.Max(1, rule.WindowMinutes);
+
+    /// <summary>
+    /// UUIDv5-style name-based GUID from the transport message id + entry index,
+    /// so every consume attempt of the same message yields the same entry IDs.
+    /// </summary>
+    private static Guid DeterministicEntryId(Guid batchId, int index)
+    {
+        var name = $"{batchId:N}:{index}";
+        var hash = System.Security.Cryptography.SHA1.HashData(System.Text.Encoding.UTF8.GetBytes(name));
+        var bytes = hash[..16];
+        bytes[6] = (byte)((bytes[6] & 0x0F) | 0x50); // version 5
+        bytes[8] = (byte)((bytes[8] & 0x3F) | 0x80); // RFC 4122 variant
+        return new Guid(bytes);
+    }
 }
