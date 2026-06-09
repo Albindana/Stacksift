@@ -1,0 +1,29 @@
+title = "StackSift gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known-safe placeholders, docs, and seeded dev defaults"
+paths = [
+  '''\.env\.example$''',
+  '''(^|/)docs/''',
+  '''(^|/)zhelpers/''',
+  '''(^|/)src/frontend/coverage/''',
+  '''(^|/)CURRENTSTATE\.md$''',          # state docs — narrative, not secrets
+  # Test fixtures legitimately carry fake/high-entropy tokens (mock JWTs, sample
+  # ids). The default entropy rule (generic-api-key) flags these as false
+  # positives; the targeted secrets-guard job + review still cover test files.
+  '''(^|/)__tests__/''',
+  '''(^|/)__mocks__/''',
+  '''\.test\.(ts|tsx|js|jsx)$''',
+  '''\.spec\.(ts|tsx|js|jsx)$''',
+]
+regexes = [
+  '''REPLACE_AT_RUNTIME''',
+  '''REPLACE_ME''',
+  '''minioadmin(_secret)?''',          # documented local dev defaults
+  '''stacksift_secret''',              # documented local dev defaults
+  '''admin_secret''',                  # documented local dev defaults
+  '''AKIAIOSFODNN7EXAMPLE''',          # canonical AWS example key (docs/tests)
+]
