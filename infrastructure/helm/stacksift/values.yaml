@@ -23,6 +23,7 @@ hosts:
   marketingWww: www.dmdailydeals.com
   files: files.dmdailydeals.com    # MinIO public (presigned downloads)
   n8n: n8n.dmdailydeals.com        # n8n editor UI (webhook is intra-namespace only)
+  grafana: grafana.dmdailydeals.com # Grafana dashboards
 
 ingress:
   className: nginx
@@ -291,3 +292,19 @@ loki:
   resources:
     requests: { cpu: 100m, memory: 256Mi }
     limits:   { memory: 512Mi }
+
+# Grafana — dashboards + datasources (Prometheus + Loki), the 6 compose dashboards
+# provisioned via ConfigMap. Tempo datasource is omitted (bucket B). Exposed at
+# grafana.<domain>.
+grafana:
+  enabled: false
+  image: grafana/grafana:11.3.0   # pin (compose used :latest)
+  # Pre-created Secret with keys: admin-user, admin-password.
+  adminSecretName: stacksift-grafana-admin
+  storage: 1Gi
+  storageClass: longhorn
+  ingress:
+    enabled: true
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits:   { memory: 256Mi }
