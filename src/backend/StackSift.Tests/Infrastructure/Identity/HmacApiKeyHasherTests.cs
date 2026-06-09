@@ -39,7 +39,11 @@ public class HmacApiKeyHasherTests
         var hash = hasher.Hash(key);
 
         Assert.True(hasher.Verify(key, hash));
-        Assert.False(hasher.Verify($"{key[..^1]}x", hash));
+        // Flip the last char to one guaranteed to differ from the original — a
+        // fixed 'x' was flaky (~1/62) when Generate() happened to end in 'x',
+        // making the "tampered" candidate identical to the key.
+        var tampered = $"{key[..^1]}{(key[^1] == 'x' ? 'y' : 'x')}";
+        Assert.False(hasher.Verify(tampered, hash));
     }
 
     [Fact]
