@@ -278,3 +278,16 @@ alertmanager:
     groupWait: 30s
     groupInterval: 5m
     repeatInterval: 4h
+
+# Loki — single-binary (filesystem storage), mirrors the compose service. When
+# enabled, the app's Serilog Loki sink is wired (Serilog__Loki__Url) in the
+# ConfigMap, closing the prod console-only gap.
+loki:
+  enabled: false
+  image: grafana/loki:2.9.0
+  storage: 5Gi
+  storageClass: longhorn
+  retentionHours: 336   # 14 days, matches compose
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { memory: 512Mi }
