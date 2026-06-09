@@ -53,6 +53,22 @@ jobs:
           echo "OK — no wildcard Elasticsearch log index in backend read paths."
 
   # ---------------------------------------------------------------------------
+  # Commit-message lint (Conventional Commits). Belt-and-suspenders to the local
+  # husky commit-msg hook — catches commits made via the web UI or --no-verify.
+  # ---------------------------------------------------------------------------
+  commitlint:
+    name: Commit messages
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: wagoid/commitlint-github-action@v6
+        with:
+          configFile: commitlint.config.js
+
+  # ---------------------------------------------------------------------------
   # Detect which parts of the monorepo changed.
   # PRs: only the affected job(s) run.
   # Pushes to main/develop: both jobs always run.
