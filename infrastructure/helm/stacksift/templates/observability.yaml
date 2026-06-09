@@ -58,6 +58,13 @@ spec:
   retention: {{ .Values.prometheus.retention | quote }}
   scrapeInterval: {{ .Values.prometheus.scrapeInterval | quote }}
   resources: {{- toYaml .Values.prometheus.resources | nindent 4 }}
+  {{- if .Values.alertmanager.enabled }}
+  alerting:
+    alertmanagers:
+      - namespace: {{ .Release.Namespace }}
+        name: alertmanager-operated
+        port: web
+  {{- end }}
   serviceMonitorSelector:
     matchLabels:
       app.kubernetes.io/name: stacksift
