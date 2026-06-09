@@ -1,0 +1,6 @@
+if command -v gitleaks >/dev/null 2>&1; then
+  gitleaks protect --staged --config .gitleaks.toml --redact || {
+    echo "gitleaks: staged changes contain a potential secret (above). Commit blocked."
+    exit 1
+  }
+fi

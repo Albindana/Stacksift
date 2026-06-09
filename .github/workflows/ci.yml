@@ -69,6 +69,23 @@ jobs:
           configFile: commitlint.config.mjs
 
   # ---------------------------------------------------------------------------
+  # Secret scanning (gitleaks). General multi-provider net over PR diffs and
+  # pushed commits — complements the targeted Stripe `secrets-guard` above.
+  # Config + allowlist: .gitleaks.toml. fetch-depth: 0 so push scans see history.
+  # ---------------------------------------------------------------------------
+  secret-scan:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+
+  # ---------------------------------------------------------------------------
   # Detect which parts of the monorepo changed.
   # PRs: only the affected job(s) run.
   # Pushes to main/develop: both jobs always run.
