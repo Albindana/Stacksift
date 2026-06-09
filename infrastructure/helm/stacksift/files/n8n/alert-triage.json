@@ -1,0 +1,94 @@
+[
+{
+  "name": "alert-triage",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "alert-triage",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "1f3a6c20-0001-4a10-8a01-aa0000000001",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-220, 0],
+      "webhookId": "alert-triage"
+    },
+    {
+      "parameters": {
+        "jsCode": "const payload = $input.first().json.body ?? $input.first().json;\nconst alerts = Array.isArray(payload.alerts) ? payload.alerts : [];\nconst first = alerts[0] ?? {};\nconst labels = first.labels ?? {};\nconst annotations = first.annotations ?? {};\nconst status = payload.status ?? first.status ?? 'unknown';\nconst alertname = labels.alertname ?? 'UnknownAlert';\nconst severity = labels.severity ?? 'unknown';\nconst lines = alerts.map((a) => {\n  const l = a.labels ?? {};\n  const an = a.annotations ?? {};\n  return `- ${l.alertname ?? 'Unknown'} [${l.severity ?? 'n/a'}] ${a.status ?? status}: ${an.summary ?? an.description ?? ''}`;\n});\nconst alertSummary = `Status: ${status}\\nAlert count: ${alerts.length}\\n${lines.join('\\n')}`;\nreturn [{ json: { status, alertname, severity, count: alerts.length, alertSummary } }];"
+      },
+      "id": "1f3a6c20-0002-4a10-8a01-aa0000000002",
+      "name": "Flatten alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.OPENAI_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"model\": \"gpt-4o-mini\", \"temperature\": 0.2, \"max_tokens\": 200, \"messages\": [ { \"role\": \"system\", \"content\": \"You are StackSift's on-call SRE assistant. Given a Prometheus alert (name, severity, status, summary), produce a terse 3-line triage: (1) one-line severity judgement, (2) the most probable root cause, (3) the first remediation step. No preamble.\" }, { \"role\": \"user\", \"content\": $json.alertSummary } ] } }}",
+        "options": {}
+      },
+      "id": "1f3a6c20-0003-4a10-8a01-aa0000000003",
+      "name": "OpenAI triage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [240, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SLACK_WEBHOOK_URL }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"text\": ( $('Flatten alert').first().json.status === 'resolved' ? ':white_check_mark:' : ':rotating_light:' ) + \" *\" + $('Flatten alert').first().json.alertname + \"* (\" + $('Flatten alert').first().json.severity + \") — \" + $('Flatten alert').first().json.status + \"\\n\" + $json.choices[0].message.content } }}",
+        "options": {}
+      },
+      "id": "1f3a6c20-0004-4a10-8a01-aa0000000004",
+      "name": "Notify Slack",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 0]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Flatten alert", "type": "main", "index": 0 }]]
+    },
+    "Flatten alert": {
+      "main": [[{ "node": "OpenAI triage", "type": "main", "index": 0 }]]
+    },
+    "OpenAI triage": {
+      "main": [[{ "node": "Notify Slack", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateId": "stacksift-alert-triage"
+  },
+  "tags": []
+}
+]

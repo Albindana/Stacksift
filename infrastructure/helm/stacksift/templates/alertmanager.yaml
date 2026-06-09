@@ -1,0 +1,64 @@
+{{- if .Values.alertmanager.enabled }}
+{{/* Namespaced Alertmanager CR + its AlertmanagerConfig. The operator creates the
+     headless alertmanager-operated Service (:9093 web); the Prometheus CR points
+     at it (observability.yaml). fsGroup matches the Prometheus CR so the Longhorn
+     PVC is writable by the non-root process. */}}
+apiVersion: monitoring.coreos.com/v1
+kind: Alertmanager
+metadata:
+  name: stacksift
+  labels: {{- include "stacksift.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.alertmanager.replicas }}
+  image: {{ .Values.alertmanager.image }}
+  securityContext:
+    runAsUser: 1000
+    runAsNonRoot: true
+    fsGroup: 2000
+  resources: {{- toYaml .Values.alertmanager.resources | nindent 4 }}
+  alertmanagerConfigSelector:
+    matchLabels:
+      app.kubernetes.io/name: stacksift
+  storage:
+    volumeClaimTemplate:
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: {{ .Values.alertmanager.storageClass }}
+        resources:
+          requests:
+            storage: {{ .Values.alertmanager.storage }}
+---
+{{/* The operator wraps this under a top-level route matching namespace=<ns>;
+     route.receiver must reference a receiver defined here. severity=critical
+     gets its own child route (same n8n receiver — demonstrates real routing). */}}
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  name: stacksift
+  labels: {{- include "stacksift.labels" . | nindent 4 }}
+spec:
+  route:
+    receiver: default
+    groupBy: {{ toJson .Values.alertmanager.route.groupBy }}
+    groupWait: {{ .Values.alertmanager.route.groupWait }}
+    groupInterval: {{ .Values.alertmanager.route.groupInterval }}
+    repeatInterval: {{ .Values.alertmanager.route.repeatInterval }}
+    routes:
+      - receiver: default
+        matchers:
+          - name: severity
+            value: critical
+  receivers:
+    - name: default
+      webhookConfigs:
+        - url: {{ .Values.alertmanager.receiver.webhookUrl | quote }}
+          sendResolved: true
+      {{- if .Values.alertmanager.receiver.slack.enabled }}
+      slackConfigs:
+        - apiURL:
+            name: {{ .Values.alertmanager.receiver.slack.secretName }}
+            key: slack-api-url
+          channel: {{ .Values.alertmanager.receiver.slack.channel | quote }}
+          sendResolved: true
+      {{- end }}
+{{- end }}

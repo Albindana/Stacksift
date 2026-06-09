@@ -22,6 +22,8 @@ hosts:
   marketing: dmdailydeals.com      # marketing apex
   marketingWww: www.dmdailydeals.com
   files: files.dmdailydeals.com    # MinIO public (presigned downloads)
+  n8n: n8n.dmdailydeals.com        # n8n editor UI (webhook is intra-namespace only)
+  grafana: grafana.dmdailydeals.com # Grafana dashboards
 
 ingress:
   className: nginx
@@ -231,3 +233,78 @@ prometheus:
   postgresExporter:
     enabled: false
     port: 9187
+
+# n8n — the AIOps alert receiver (Alertmanager → n8n → OpenAI → Slack). Mirrors
+# the compose service; the alert-triage workflow JSON is imported + activated by
+# an initContainer on first boot. The webhook is reached intra-namespace at
+# http://n8n:5678/webhook/alert-triage; the Ingress exposes the editor UI only.
+n8n:
+  enabled: false
+  image: docker.n8n.io/n8nio/n8n:1.70.0
+  storage: 2Gi
+  storageClass: longhorn
+  # Pre-created Secret: N8N_BASIC_AUTH_USER, N8N_BASIC_AUTH_PASSWORD,
+  # OPENAI_API_KEY, SLACK_WEBHOOK_URL. Mirrors the stacksift-es-s3-creds pattern.
+  secretName: stacksift-n8n
+  ingress:
+    enabled: true
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { memory: 512Mi }
+
+# Alertmanager — namespaced CR (Prometheus Operator). Routes severity=critical to
+# the in-cluster n8n alert-triage webhook (R5); a Slack receiver is the fallback.
+# The Prometheus CR is pointed at the operator-managed alertmanager-operated
+# Service when this is enabled.
+alertmanager:
+  enabled: false
+  image: prom/alertmanager:v0.27.0   # pin to match compose
+  replicas: 1
+  storage: 1Gi
+  storageClass: longhorn
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits:   { memory: 256Mi }
+  receiver:
+    # Primary receiver = in-cluster n8n (Alertmanager → n8n → OpenAI → Slack).
+    webhookUrl: http://n8n:5678/webhook/alert-triage
+    # Optional Slack fallback. Enable + create the Secret (key: slack-api-url)
+    # to post directly to Slack instead of / in addition to n8n.
+    slack:
+      enabled: false
+      secretName: stacksift-alertmanager
+      channel: "#stacksift-alerts"
+  route:
+    groupBy: ["alertname", "severity"]
+    groupWait: 30s
+    groupInterval: 5m
+    repeatInterval: 4h
+
+# Loki — single-binary (filesystem storage), mirrors the compose service. When
+# enabled, the app's Serilog Loki sink is wired (Serilog__Loki__Url) in the
+# ConfigMap, closing the prod console-only gap.
+loki:
+  enabled: false
+  image: grafana/loki:2.9.0
+  storage: 5Gi
+  storageClass: longhorn
+  retentionHours: 336   # 14 days, matches compose
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { memory: 512Mi }
+
+# Grafana — dashboards + datasources (Prometheus + Loki), the 6 compose dashboards
+# provisioned via ConfigMap. Tempo datasource is omitted (bucket B). Exposed at
+# grafana.<domain>.
+grafana:
+  enabled: false
+  image: grafana/grafana:11.3.0   # pin (compose used :latest)
+  # Pre-created Secret with keys: admin-user, admin-password.
+  adminSecretName: stacksift-grafana-admin
+  storage: 1Gi
+  storageClass: longhorn
+  ingress:
+    enabled: true
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits:   { memory: 256Mi }

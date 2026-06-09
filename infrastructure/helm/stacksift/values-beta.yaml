@@ -45,9 +45,26 @@ images:
   frontend:  { tag: sha-26a8757 }
   marketing: { tag: sha-7c37e80 }
 
-# Minimal in-namespace Prometheus + the 4 Gate-2 alerts (needs Prometheus-Operator
-# CRDs, available on the cluster). Grafana/Loki deferred to bucket B.
+# In-namespace Prometheus + all 14 alerts (needs Prometheus-Operator CRDs,
+# available on the cluster).
 prometheus:
+  enabled: true
+
+# Full in-cluster observability: n8n alert receiver, Alertmanager (→ n8n →
+# OpenAI → Slack), Loki (+ Serilog wiring), Grafana (datasources + 6 dashboards).
+# Prereq Secrets (create out-of-band before enabling — see chart README):
+#   stacksift-n8n            (N8N_BASIC_AUTH_USER/PASSWORD, OPENAI_API_KEY, SLACK_WEBHOOK_URL)
+#   stacksift-grafana-admin  (admin-user, admin-password)
+# Alertmanager routes to in-cluster n8n by default (receiver.webhookUrl); set
+# alertmanager.receiver.slack.enabled + the stacksift-alertmanager Secret to also
+# post directly to Slack.
+n8n:
+  enabled: true
+alertmanager:
+  enabled: true
+loki:
+  enabled: true
+grafana:
   enabled: true
 
 # pgBackRest → MinIO: DISABLED until MinIO serves TLS. pgBackRest's S3 driver

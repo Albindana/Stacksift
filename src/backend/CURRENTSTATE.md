@@ -1,6 +1,6 @@
 # Backend — Current State
 
-> **Last updated:** 2026-06-06 (AI-feature bug-fix series — ES `.keyword` queries, incident↔analysis linkage + trigger idempotency, alert-rule severity, degradation visibility + email cooldown; see §"AI-feature fixes (2026-06-06)")
+> **Last updated:** 2026-06-09 (in-cluster observability — Loki/Grafana/Alertmanager/n8n + all 14 alerts + Serilog→Loki wiring ported to the Helm chart; see §Deployment. Plus 2026-06-06 AI-feature bug-fix series below.)
 > **Sprint:** Post-Sprint-3 — feature surface complete; Plans 04–08 (payments, data-lifecycle/GDPR, observability, realm-as-code, security) landed; now Docker-native.
 > **Health:** All four layers fully built out. Backend test suite on real Testcontainers (Postgres pgvector:pg16 + Keycloak) — last reported 209/209 green at CORE-FUNC, since extended by billing/GDPR/security work. The whole stack now boots and works **composed in Docker Compose** (see §"Docker integration" below).
 
@@ -111,7 +111,8 @@ The stack now boots and works **composed in Docker**, not just as local dev proc
 Gate-2 chart deploys all tiers to namespace `project-07`. **WS4 hardening** (all
 namespaced, gated by values flags; on in `values-beta.yaml` except NetworkPolicy):
 - `networkPolicy.enabled` — default-deny ingress + intra-ns allow + ingress-nginx→web (`templates/networkpolicy.yaml`); apply **after** stand-up.
-- `prometheus.enabled` — namespaced Prometheus CR + RBAC + api/rabbitmq ServiceMonitors + `PrometheusRule` (4 Gate-2 alerts), `templates/observability.yaml`. api SM relabels `job=stacksift-api`.
+- `prometheus.enabled` — namespaced Prometheus CR + RBAC + api/rabbitmq ServiceMonitors + `PrometheusRule` with **all 14 alerts** (moved to `templates/prometheusrule.yaml`; was 4 inline in `observability.yaml`). api SM relabels `job=stacksift-api`.
+- **In-cluster observability (2026-06-09, `feature/k8s-observability` stacked on `feature/n8n-automation`):** the compose Loki/Grafana/Alertmanager/n8n stack ported to the chart, all namespaced + values-gated (on in `values-beta.yaml`). New flags: `n8n.enabled` (Deployment+PVC+UI Ingress; an initContainer idempotently imports+activates the `alert-triage` workflow from a chart-local ConfigMap → AIOps receiver), `alertmanager.enabled` (Alertmanager CR + AlertmanagerConfig routing `severity=critical` → `http://n8n:5678/webhook/alert-triage` → OpenAI → Slack; Prometheus CR pointed at `alertmanager-operated:web`), `loki.enabled` (single-binary `loki:3100`), `grafana.enabled` (datasources Prometheus+Loki — no Tempo — + the 6 dashboards, Ingress). **`Serilog__Loki__Url: http://loki:3100` is now set in `templates/configmap.yaml` when `loki.enabled`** — closes the prod console-only gap. New hosts `grafana.`/`n8n.<domain>`; new prereq Secrets `stacksift-n8n`, `stacksift-grafana-admin`, optional `stacksift-alertmanager`. Verified via `helm lint` + full `helm template -f values-beta.yaml` (55 objects) + server-side dry-run; **live deploy/upgrade on `project-07` is the open deploy-time step (Phase 8)**. Docs: chart README, `docs/observability-setup.md`, `docs/runbooks/05-observability.md`, `docs/n8n-automation.md`.
 - `postgres.backups.enabled` — pgBackRest → MinIO: `stanza-create` hook Job + full/diff CronJobs (`templates/pgbackrest-*.yaml`); keeps `archive_mode=on`. Secret `stacksift-pgbackrest`.
 - `elasticsearch.lifecycle.enabled` — ES keystore initContainer + plain-http MinIO S3 client; app registers ILM + snapshot repo at startup. Secret `stacksift-es-s3-creds`.
 

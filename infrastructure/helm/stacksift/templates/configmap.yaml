@@ -44,5 +44,10 @@ data:
   Stripe__CheckoutSuccessUrl: "https://{{ .Values.hosts.app }}/billing/success?session={CHECKOUT_SESSION_ID}"
   Stripe__CheckoutCancelUrl: "https://{{ .Values.hosts.app }}/billing/cancel"
   Stripe__PortalReturnUrl: "https://{{ .Values.hosts.app }}/settings/billing"
-  # NOTE: Serilog__Loki__Url and OTEL_EXPORTER_OTLP_ENDPOINT intentionally unset
-  # (no Loki/Tempo at Gate 2) → console logging only; add when observability lands.
+  {{- if .Values.loki.enabled }}
+  # Serilog Loki sink → the in-namespace Loki Service (closes the console-only gap).
+  Serilog__Loki__Url: "http://loki:3100"
+  {{- else }}
+  # NOTE: Serilog__Loki__Url unset (no Loki) → console logging only.
+  {{- end }}
+  # OTEL_EXPORTER_OTLP_ENDPOINT intentionally unset (Tempo/OTLP is bucket B).
