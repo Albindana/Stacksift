@@ -223,6 +223,16 @@ See `docs/payments.md` for the full operator runbook (rotating the webhook secre
 
 ---
 
+## 📦 Releases & versioning
+
+Releases are automated with **release-please** (parses Conventional Commits → version bump + `CHANGELOG.md`):
+
+- Merges to `main` keep a rolling **release PR** (`chore(release): X.Y.Z`) updated with the generated changelog grouped by type (Features / Bug Fixes / …).
+- Merging that PR creates the `vX.Y.Z` git tag, which triggers `docker-build.yml` to build + push the semver-tagged images (`:vX.Y.Z` / `:X.Y` / `:latest`).
+- Commit messages are linted so history stays machine-parseable — `commitlint` + a husky `commit-msg` hook locally (run `pnpm install` once to activate) and a `commitlint` CI job on PRs.
+
+---
+
 ## 🗓️ Capstone Milestones
 
 Course duration: March 23 – June 12, 2026 · 7 milestones · 6 sprints
