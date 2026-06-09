@@ -7,6 +7,7 @@ import type { AxiosError } from 'axios';
 import { AlertCircle } from 'lucide-react';
 import { EmptyState } from '@/app/components/ui/EmptyState';
 import { LogTableRow, LogTableRowSkeleton } from './LogTableRow';
+import { useNow } from '@/app/hooks/useNow';
 import type { CursorPaginatedResponse, LogEntry } from '@/app/types';
 
 // ---------------------------------------------------------------------------
@@ -40,6 +41,9 @@ export function LogTable({ query, appendLog: _appendLog, onResetFilters }: LogTa
 
   // Flatten all pages into a single list (newest first from API)
   const allRows: LogEntry[] = data?.pages.flatMap((p) => p.data) ?? [];
+
+  // Ticks every second so "Xs ago" labels keep moving between data updates
+  const now = useNow(1_000);
 
   const parentRef = useRef<HTMLDivElement>(null);
 
@@ -142,6 +146,7 @@ export function LogTable({ query, appendLog: _appendLog, onResetFilters }: LogTa
               <LogTableRow
                 key={allRows[item.index].id}
                 entry={allRows[item.index]}
+                now={now}
                 style={{
                   position: 'absolute',
                   top: item.start,

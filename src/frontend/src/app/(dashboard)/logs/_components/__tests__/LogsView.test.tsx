@@ -52,11 +52,21 @@ function makeMockConnection(): MockConnection {
   return { connection, handlers };
 }
 
+// Live payloads are Zod-validated at the boundary — ids must be real UUIDs.
+const PROJECT_A = '00000000-0000-4000-8000-00000000000a';
+const PROJECT_B = '00000000-0000-4000-8000-00000000000b';
+
+let uuidCounter = 0;
+function nextUuid(): string {
+  uuidCounter += 1;
+  return `00000000-0000-4000-8000-${uuidCounter.toString(16).padStart(12, '0')}`;
+}
+
 function makeEntry(overrides: Partial<LogEntry> = {}): LogEntry {
   return {
-    id: overrides.id ?? `log-${Math.random()}`,
-    projectId: overrides.projectId ?? 'proj-1',
-    logSourceId: overrides.logSourceId ?? 'src-1',
+    id: overrides.id ?? nextUuid(),
+    projectId: overrides.projectId ?? PROJECT_A,
+    logSourceId: overrides.logSourceId ?? nextUuid(),
     level: overrides.level ?? 'info',
     message: overrides.message ?? 'hello',
     timestamp: overrides.timestamp ?? new Date().toISOString(),
@@ -109,7 +119,7 @@ describe('LogsView — SignalR live append', () => {
     const handler = mock.handlers.get(HUB_METHOD_LOG_ENTRY);
     if (!handler) throw new Error('handler missing');
 
-    const entry = makeEntry({ id: 'log-1', level: 'error' });
+    const entry = makeEntry({ level: 'error' });
     act(() => {
       handler(entry);
     });
@@ -139,8 +149,8 @@ describe('LogsView — SignalR live append', () => {
     expect(appendLogMock).toHaveBeenCalledTimes(1);
   });
 
-  it('drops entries whose projectId does not match the active filter', () => {
-    currentSearchParams = 'project=proj-A';
+  it('drops malformed payloads instead of poisoning the query cache', () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
     const mock = makeMockConnection();
     renderWithProviders(mock.connection);
 
@@ -148,11 +158,29 @@ describe('LogsView — SignalR live append', () => {
     if (!handler) throw new Error('handler missing');
 
     act(() => {
-      handler(makeEntry({ projectId: 'proj-B' }));
+      // numeric level — what a backend enum-serialization drift produces
+      handler({ ...makeEntry(), level: 3 });
+    });
+
+    expect(appendLogMock).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('drops entries whose projectId does not match the active filter', () => {
+    currentSearchParams = `project=${PROJECT_A}`;
+    const mock = makeMockConnection();
+    renderWithProviders(mock.connection);
+
+    const handler = mock.handlers.get(HUB_METHOD_LOG_ENTRY);
+    if (!handler) throw new Error('handler missing');
+
+    act(() => {
+      handler(makeEntry({ projectId: PROJECT_B }));
     });
     expect(appendLogMock).not.toHaveBeenCalled();
 
-    const match = makeEntry({ projectId: 'proj-A' });
+    const match = makeEntry({ projectId: PROJECT_A });
     act(() => {
       handler(match);
     });

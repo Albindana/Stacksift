@@ -15,6 +15,7 @@ import { HubConnectionState } from '@microsoft/signalr';
 import { cn } from '@/app/lib/utils';
 import type { IHubConnection } from '@/app/lib/signalr-mock';
 import { HUB_METHOD_LOG_ENTRY } from '@/app/lib/signalr-config';
+import { parseLiveLogEntry } from '@/app/lib/live-events';
 import type { LogEntry, LogLevel, LogQueryFilters } from '@/app/types';
 
 type HubHandler = Parameters<IHubConnection['on']>[1];
@@ -124,8 +125,9 @@ export function LogsView() {
   const connection = useSignalRConnectionFromContext();
   useEffect(() => {
     if (!connection) return;
-    const onLogEntry = (entry: LogEntry) => {
-      if (!matchesFilters(entry, apiFilters)) return;
+    const onLogEntry = (raw: unknown) => {
+      const entry = parseLiveLogEntry(raw);
+      if (!entry || !matchesFilters(entry, apiFilters)) return;
       appendLog(entry);
     };
     const adapter = onLogEntry as HubHandler;

@@ -43,10 +43,11 @@ public class LogBatchConsumerTests(PostgresContainerFixture postgres) : IAsyncLi
         _db, _logEntries.Object, _cache.Object, _publish.Object, _hub.Object,
         _metrics.Object, NullLogger<LogBatchConsumer>.Instance, new FakeCurrentOrgProvider());
 
-    private static Mock<ConsumeContext<LogBatchMessage>> BuildContext(LogBatchMessage msg)
+    private static Mock<ConsumeContext<LogBatchMessage>> BuildContext(LogBatchMessage msg, Guid? messageId = null)
     {
         var mock = new Mock<ConsumeContext<LogBatchMessage>>();
         mock.Setup(c => c.Message).Returns(msg);
+        mock.Setup(c => c.MessageId).Returns(messageId ?? Guid.NewGuid());
         mock.Setup(c => c.CancellationToken).Returns(CancellationToken.None);
         return mock;
     }
@@ -286,6 +287,55 @@ public class LogBatchConsumerTests(PostgresContainerFixture postgres) : IAsyncLi
             It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<LogLevel?>(),
             It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
         Assert.Empty(await _db.Alerts.ToListAsync());
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Live feed: broadcast-before-index + redelivery-stable entry IDs
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task BulkIndexFailure_StillBroadcastsLiveEntries()
+    {
+        var orgId = Guid.NewGuid();
+        var projectId = Guid.NewGuid();
+
+        _logEntries
+            .Setup(r => r.BulkIndexForOrgAsync(orgId, It.IsAny<IList<LogEntry>>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("ES down"));
+
+        var msg = new LogBatchMessage(orgId, projectId, Guid.NewGuid(), [Entry(LogLevel.Error)]);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => BuildConsumer().Consume(BuildContext(msg).Object));
+
+        _hub.Verify(h => h.BroadcastLogEntryAsync(
+            It.IsAny<LogEntryDto>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task RedeliveredMessage_ProducesIdenticalEntryIds()
+    {
+        var orgId = Guid.NewGuid();
+        var projectId = Guid.NewGuid();
+        var messageId = Guid.NewGuid();
+
+        var captured = new List<IList<LogEntry>>();
+        _logEntries
+            .Setup(r => r.BulkIndexForOrgAsync(orgId, It.IsAny<IList<LogEntry>>(), It.IsAny<CancellationToken>()))
+            .Callback<Guid, IList<LogEntry>, CancellationToken>((_, e, _) => captured.Add(e))
+            .Returns(Task.CompletedTask);
+
+        var msg = new LogBatchMessage(orgId, projectId, Guid.NewGuid(),
+            [Entry(LogLevel.Error, "first"), Entry(LogLevel.Error, "second")]);
+
+        await BuildConsumer().Consume(BuildContext(msg, messageId).Object);
+        await BuildConsumer().Consume(BuildContext(msg, messageId).Object);
+
+        Assert.Equal(2, captured.Count);
+        Assert.Equal(
+            captured[0].Select(e => e.Id).ToArray(),
+            captured[1].Select(e => e.Id).ToArray());
+        Assert.Equal(2, captured[0].Select(e => e.Id).Distinct().Count());
     }
 
     [Fact]
