@@ -20,6 +20,7 @@ volumes:
   loki_data:
   minio_data:
   tempo_data:
+  n8n_data:
 
 services:
 
@@ -312,6 +313,42 @@ services:
       - tempo
     networks:
       - stacksift-net
+
+  # ──────────────────────────────────────────────
+  # AUTOMATION — n8n (webhook → LLM → Slack)
+  # FS-8 webhook→LLM→notification pipeline; doubles as the DO-12 AIOps
+  # alert auto-triage receiver (Alertmanager → n8n → OpenAI → Slack).
+  # Workflow lives in ./n8n/workflows/alert-triage.json (version-controlled).
+  # ──────────────────────────────────────────────
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:1.70.0
+    container_name: stacksift-n8n
+    restart: unless-stopped
+    environment:
+      N8N_HOST: localhost
+      N8N_PORT: "5678"
+      N8N_PROTOCOL: http
+      WEBHOOK_URL: http://localhost:5678/
+      N8N_BASIC_AUTH_ACTIVE: "true"
+      N8N_BASIC_AUTH_USER: ${N8N_USER:-admin}
+      N8N_BASIC_AUTH_PASSWORD: ${N8N_PASSWORD:-admin_secret}
+      GENERIC_TIMEZONE: Europe/Belgrade
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_RUNNERS_ENABLED: "true"
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n/workflows:/workflows:ro
+    networks:
+      - stacksift-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:5678/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
 
   # ──────────────────────────────────────────────
   # OBJECT STORAGE — MinIO (S3-compatible)
