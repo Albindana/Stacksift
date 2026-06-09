@@ -99,7 +99,7 @@ Api → Infrastructure → Application → Domain
 - Framer Motion props (`initial`, `animate`, etc.) must be stripped in jsdom tests using underscore aliases (`initial: _i`) to prevent DOM prop warnings.
 
 ### Git
-- Conventional Commits: `feat:`, `fix:`, `docs:`, `chore:`, `refactor:`, `test:`, `ci:`
+- Conventional Commits: `feat:`, `fix:`, `docs:`, `chore:`, `refactor:`, `test:`, `ci:` (also `perf`, `build`, `revert`). **Enforced** by `commitlint` + a husky `commit-msg` hook (run `pnpm install` once at the repo root to activate) and a `commitlint` CI job on PRs. Check a message locally with `echo "feat: x" | pnpm exec commitlint`.
 - Branch naming: `feature/`, `fix/`, `docs/`, `chore/`
 - All PRs must reference a GitHub Issue. No direct commits to `main`.
 
