@@ -22,6 +22,7 @@ hosts:
   marketing: dmdailydeals.com      # marketing apex
   marketingWww: www.dmdailydeals.com
   files: files.dmdailydeals.com    # MinIO public (presigned downloads)
+  n8n: n8n.dmdailydeals.com        # n8n editor UI (webhook is intra-namespace only)
 
 ingress:
   className: nginx
@@ -231,3 +232,21 @@ prometheus:
   postgresExporter:
     enabled: false
     port: 9187
+
+# n8n — the AIOps alert receiver (Alertmanager → n8n → OpenAI → Slack). Mirrors
+# the compose service; the alert-triage workflow JSON is imported + activated by
+# an initContainer on first boot. The webhook is reached intra-namespace at
+# http://n8n:5678/webhook/alert-triage; the Ingress exposes the editor UI only.
+n8n:
+  enabled: false
+  image: docker.n8n.io/n8nio/n8n:1.70.0
+  storage: 2Gi
+  storageClass: longhorn
+  # Pre-created Secret: N8N_BASIC_AUTH_USER, N8N_BASIC_AUTH_PASSWORD,
+  # OPENAI_API_KEY, SLACK_WEBHOOK_URL. Mirrors the stacksift-es-s3-creds pattern.
+  secretName: stacksift-n8n
+  ingress:
+    enabled: true
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { memory: 512Mi }
