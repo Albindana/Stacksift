@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Sparkles, RefreshCw, AlertCircle, CheckCircle } from 'lucide-react';
 import { cn } from '@/app/lib/utils';
+import { useFeatureFlag } from '@/app/hooks/queries/use-features';
 import type { AiAnalysis, AiAnalysisStatus } from '@/app/types';
 
 // ---------------------------------------------------------------------------
@@ -98,6 +99,8 @@ export function AiAnalysisPanel({
   onTrigger,
 }: AiAnalysisPanelProps) {
   const state = deriveState(analysisId, aiAnalysis, isTriggeringAnalysis);
+  // UX gate (the backend `ai-analysis` flag is the authoritative kill-switch).
+  const aiEnabled = useFeatureFlag('ai-analysis');
 
   return (
     <div className="flex flex-col gap-3">
@@ -107,8 +110,8 @@ export function AiAnalysisPanel({
       </div>
 
       <div className="rounded-lg border border-line bg-surface p-5">
-        {/* ── Idle: show trigger button ─────────────────────────────────── */}
-        {state === 'idle' && (
+        {/* ── Idle: trigger button, gated by the ai-analysis flag ───────── */}
+        {state === 'idle' && aiEnabled && (
           <div className="flex flex-col items-start gap-3">
             <p className="text-sm text-muted">
               No analysis yet. Trigger the AI to get a plain-English root cause
@@ -122,6 +125,14 @@ export function AiAnalysisPanel({
               <Sparkles className="h-4 w-4" aria-hidden="true" />
               Analyze with AI
             </button>
+          </div>
+        )}
+
+        {/* ── Idle but the kill-switch is off: muted note, no button ────── */}
+        {state === 'idle' && !aiEnabled && (
+          <div className="flex items-start gap-2 text-sm text-muted">
+            <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
+            <span>AI analysis is currently disabled.</span>
           </div>
         )}
 

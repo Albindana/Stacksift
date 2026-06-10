@@ -1,6 +1,7 @@
 using FluentValidation;
 using MediatR;
 using StackSift.Application.DTOs;
+using StackSift.Application.Features;
 using StackSift.Application.Interfaces;
 using StackSift.Application.Mapping;
 using StackSift.Domain;
@@ -25,11 +26,17 @@ public class TriggerAiAnalysisCommandValidator : AbstractValidator<TriggerAiAnal
 public class TriggerAiAnalysisCommandHandler(
     IUnitOfWork uow,
     ICurrentUserService currentUser,
-    IAiAnalysisJobRunner jobRunner)
+    IAiAnalysisJobRunner jobRunner,
+    IFeatureFlagService featureFlags)
     : IRequestHandler<TriggerAiAnalysisCommand, AiAnalysisDto>
 {
     public async Task<AiAnalysisDto> Handle(TriggerAiAnalysisCommand request, CancellationToken ct)
     {
+        // Authoritative kill-switch (FS-6). Fail-open so an Unleash outage can't
+        // disable AI; the flag must be explicitly OFF to block.
+        if (!featureFlags.IsEnabled(FeatureFlagNames.AiAnalysis, defaultValue: true))
+            throw new FeatureDisabledException("AI analysis is currently disabled.");
+
         var incident = await uow.Incidents.GetByIdAsync(request.IncidentId, ct)
             ?? throw new NotFoundException(nameof(Incident), request.IncidentId);
 

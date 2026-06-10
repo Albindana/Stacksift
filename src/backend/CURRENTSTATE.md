@@ -1,6 +1,6 @@
 # Backend — Current State
 
-> **Last updated:** 2026-06-09 (in-cluster observability — Loki/Grafana/Alertmanager/n8n + all 14 alerts + Serilog→Loki wiring ported to the Helm chart; see §Deployment. Plus 2026-06-06 AI-feature bug-fix series below.)
+> **Last updated:** 2026-06-10 (FS-6 feature flags — Unleash; see "Work since Sprint 3"). Prior: 2026-06-09 (in-cluster observability — Loki/Grafana/Alertmanager/n8n + all 14 alerts + Serilog→Loki wiring ported to the Helm chart; see §Deployment. Plus 2026-06-06 AI-feature bug-fix series below.)
 > **Sprint:** Post-Sprint-3 — feature surface complete; Plans 04–08 (payments, data-lifecycle/GDPR, observability, realm-as-code, security) landed; now Docker-native.
 > **Health:** All four layers fully built out. Backend test suite on real Testcontainers (Postgres pgvector:pg16 + Keycloak) — last reported 209/209 green at CORE-FUNC, since extended by billing/GDPR/security work. The whole stack now boots and works **composed in Docker Compose** (see §"Docker integration" below).
 
@@ -73,6 +73,7 @@ Api → Infrastructure → Application → Domain
 | **PD-05 realm-as-code** | Keycloak Terraform module (`infrastructure/terraform/keycloak/`) — realm + 3 OIDC clients + service-account grants + required actions; dev realm JSON hardened (verify-email, brute-force, password policy, refresh rotation). |
 | **PD-08 security / multi-tenancy** | Defense-in-depth tenancy: repo filter → EF global query filter → **Postgres RLS** (`AddRowLevelSecurity`) → per-request session GUC (`TenantConnectionInterceptor`, `ICurrentOrgProvider`). Append-only audit (`AddAuditLogAppendOnlyTrigger`). Registration abuse (Turnstile, disposable-email, honeypot). Config-driven CORS, security headers, expanded rate limits, ingest/body caps. `docs/multi-tenancy-verification.md`, `docs/security/`. |
 | **Surfaces** | Marketing site (`src/marketing`, Next.js 16) and ingest SDKs (`@stacksift/winston-transport`, `StackSift.Serilog.Sink`) added with their own CI jobs. |
+| **FS-6 feature flags (Unleash)** | Self-hosted Unleash (`unleash` + `unleash-db` in compose). `IFeatureFlagService` (Application) + `UnleashFeatureFlagService` (Infrastructure, `Unleash.Client` 6.2.1) — the seam keeps the SDK out of Application. `TriggerAiAnalysisCommandHandler` enforces the `ai-analysis` kill-switch → `FeatureDisabledException` → **403** (fail-open default). `GET /api/v1/features` (FeaturesController + `GetFeatureFlagsQuery`) feeds the SPA via the BFF. Config: `Unleash__Url` / `Unleash__ClientToken`. **Deployed:** compose (`unleash` + `unleash-db`) **and** the Helm chart (`templates/unleash.yaml`, `unleash.enabled` on in `values-beta.yaml`; admin-UI Ingress `unleash.<domain>`; in-namespace `Unleash__Url` in configmap; prereq secret `stacksift-unleash`). Fail-open. See `docs/feature-flags.md`. |
 
 ## AI-feature fixes (2026-06-06 — `fix/ai-analysis-context-and-linkage` → `feat/alert-rule-severity` → `fix/ai-degradation-hardening`)
 

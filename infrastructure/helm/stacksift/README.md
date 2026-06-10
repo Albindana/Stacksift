@@ -103,6 +103,24 @@ chart; it consumes the cluster's pre-installed **ECK** and **cert-manager**).
    kubectl -n project-07 create secret generic stacksift-alertmanager \
      --from-literal=slack-api-url="$SW"
    ```
+10. *(Only if `unleash.enabled=true`)* Unleash DB password + pre-seeded SDK tokens
+    (FS-6 feature flags). Token format is `<project>:<env>.<secret>` for the client
+    (`default:development.<hex>`) and `*:*.<hex>` for admin:
+    ```bash
+    UDB=$(grep '^UNLEASH_DB_PASSWORD='    ~/.config/stacksift-deploy/secrets.env | cut -d= -f2-)
+    UCT=$(grep '^UNLEASH_CLIENT_TOKEN='   ~/.config/stacksift-deploy/secrets.env | cut -d= -f2-)
+    UAT=$(grep '^UNLEASH_ADMIN_TOKEN='    ~/.config/stacksift-deploy/secrets.env | cut -d= -f2-)
+    kubectl -n project-07 create secret generic stacksift-unleash \
+      --from-literal=DATABASE_PASSWORD="$UDB" \
+      --from-literal=INIT_CLIENT_API_TOKENS="$UCT" \
+      --from-literal=INIT_ADMIN_API_TOKENS="$UAT"
+    ```
+    **Also** add `Unleash__ClientToken=<same value as UNLEASH_CLIENT_TOKEN>` to
+    `secrets.env` so it lands in `stacksift-secrets` — that's the token the API
+    authenticates to Unleash with (it must equal `INIT_CLIENT_API_TOKENS`). The
+    browser never gets a token (flags come via the BFF `GET /api/v1/features`).
+    After first login at `https://unleash.<domain>` (default `admin` / `unleash4all`)
+    **change the admin password** — the UI is publicly reachable. See `docs/feature-flags.md`.
 
 ## Install / upgrade
 ```bash
@@ -153,6 +171,7 @@ marketing: `NEXT_PUBLIC_APP_BASE_URL=https://app.dmdailydeals.com`. Push as tag 
 | `grafana.enabled` | false | **true** | Grafana + provisioned Prometheus/Loki datasources + the 6 dashboards; Ingress `grafana.<domain>`. Needs `stacksift-grafana-admin` (prereq 8). |
 | `postgres.backups.enabled` | false | **true** | keeps `archive_mode=on`, renders the pgBackRest `stanza-create` hook Job + full/diff CronJobs → MinIO `stacksift-pg-backup`. Needs the `stacksift-pgbackrest` Secret (prereq 6). |
 | `elasticsearch.lifecycle.enabled` | false | **true** | ES keystore initContainer + plain-http MinIO S3 client; app registers ILM + the `stacksift-es-backup` repo at startup. Needs `stacksift-es-s3-creds` (prereq 5). |
+| `unleash.enabled` | false | **true** | Unleash + its own Postgres (Deployment + PVC + Service) + admin-UI Ingress (`unleash.<domain>`); the API reads flags in-namespace (`Unleash__Url` in configmap + `Unleash__ClientToken` in the app secret). Needs `stacksift-unleash` (prereq 10). FS-6 feature flags; see `docs/feature-flags.md`. |
 | `networkPolicy.enabled` | false | false | default-deny ingress + intra-ns allow + ingress-nginx→web. **Apply post-stand-up:** `helm upgrade … --set networkPolicy.enabled=true`. |
 
 Deploy-time validation (DEPLOY/10 + runbook 01): stanza-create + first WAL archive,

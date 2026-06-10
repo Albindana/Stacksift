@@ -1,7 +1,17 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AiAnalysisPanel } from '../AiAnalysisPanel';
+import { useFeatureFlag } from '@/app/hooks/queries/use-features';
 import type { AiAnalysis } from '@/app/types';
+
+// The panel reads the ai-analysis flag via useFeatureFlag (a useQuery hook);
+// mock it so these tests need no QueryClientProvider. Defaults ON.
+jest.mock('@/app/hooks/queries/use-features', () => ({
+  useFeatureFlag: jest.fn(() => true),
+}));
+const mockUseFeatureFlag = useFeatureFlag as jest.MockedFunction<typeof useFeatureFlag>;
+
+beforeEach(() => mockUseFeatureFlag.mockReturnValue(true));
 
 const ANALYSIS_ID = '11111111-1111-1111-1111-111111111111';
 
@@ -35,6 +45,21 @@ describe('AiAnalysisPanel', () => {
     );
 
     expect(screen.getByRole('button', { name: /analyze with ai/i })).toBeInTheDocument();
+  });
+
+  it('hides the trigger button and shows a disabled note when the flag is off', () => {
+    mockUseFeatureFlag.mockReturnValue(false);
+    render(
+      <AiAnalysisPanel
+        analysisId={null}
+        aiAnalysis={undefined}
+        isTriggeringAnalysis={false}
+        onTrigger={jest.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: /analyze with ai/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/ai analysis is currently disabled/i)).toBeInTheDocument();
   });
 
   it('invokes onTrigger when the button is clicked', async () => {
