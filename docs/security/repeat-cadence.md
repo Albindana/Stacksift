@@ -5,7 +5,8 @@ Ongoing assurance after the pre-launch pen test.
 | Cadence | Activity |
 |---|---|
 | Continuous | Dependabot PRs; Trivy + Dockle on every image build; GHAS code + secret scanning. |
-| Monthly | Triage Dependabot/Trivy findings; clear or justify `.trivyignore` entries. |
+| Weekly | OWASP ZAP passive baseline DAST against the beta (`zap-dast` workflow; report-only). See `docs/security/dast-zap.md`. |
+| Monthly | Triage Dependabot/Trivy findings; clear or justify `.trivyignore` entries; review the latest ZAP `WARN` backlog. |
 | Quarterly | Internal review against the OWASP ASVS L2 checklist; lockfile audit (`docs/security/lockfile-audit.md`); `nuclei` sweep against staging. |
 | Semi-annual | Restore drill (see `docs/runbooks/restore-drill-tabletop.md`). |
 | Annual | External re-test (repeat of the pre-launch pen-test scope). |

@@ -18,3 +18,7 @@ appsettings.Development.json
 walkthrough.md.resolved
 zhelpers/
 *.lscache
+
+# OWASP ZAP local scan scratch output (reports land here; the committed
+# baseline is docs/security/m5-zap-baseline.html)
+zap-out/
