@@ -18,10 +18,17 @@
 
 FROM pgvector/pgvector:pg16
 
+# Cache-bust for the apt-upgrade layer below. Bump this date to force a fresh
+# `apt-get upgrade` that pulls the current Debian point release — clears base
+# CVEs fixed upstream after this layer was last cached. 2026-06-10: picks up
+# CVE-2026-45447 (libssl3/openssl -> 3.0.20-1~deb12u2).
+ARG APT_REFRESH=2026-06-10
+
 # pgbackrest is on bookworm-backports. The trixie series of pgvector/pgvector
 # already includes apt-transport-https, but install both anyway to keep the
 # Dockerfile portable to older bases.
 RUN set -eux; \
+    : "apt refresh ${APT_REFRESH}"; \
     apt-get update; \
     # Pull the latest patched versions of every package the upstream
     # pgvector/pgvector:pg16 image baked at its release time. Without this,
