@@ -1,0 +1,93 @@
+name: e2e-real
+
+# Real-stack Playwright journey (FE-7 / M2.6): a seeded user logs in through
+# real Keycloak and runs the core value loop (create project → log source →
+# ingest a log → see it on /logs) against a docker-composed stack — nothing
+# mocked. Kept off per-PR CI (heavy: ~9 services + an ES round-trip); available
+# on demand for the demo and nightly for confidence.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 2 * * *" # nightly 02:00 UTC
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-real
+  cancel-in-progress: false
+
+jobs:
+  e2e:
+    name: real-stack journey
+    runs-on: ubuntu-latest
+    env:
+      # Compose Postgres defaults (infrastructure/docker/.env.example).
+      POSTGRES_USER: stacksift
+      POSTGRES_DB: stacksift
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bring up the composed stack (real auth, no mocks)
+        working-directory: infrastructure/docker
+        run: |
+          docker compose up -d --wait \
+            postgres elasticsearch redis rabbitmq keycloak minio minio-init api frontend
+
+      - name: Apply database migrations
+        working-directory: infrastructure/docker
+        run: docker compose --profile migrate run --rm migrate
+
+      - name: Seed the e2e fixture (Keycloak user + app DB rows)
+        env:
+          E2E_USER: ${{ secrets.E2E_USER || 'e2e@stacksift.local' }}
+          E2E_PASSWORD: ${{ secrets.E2E_PASSWORD || 'E2eRunner!23' }}
+        run: ./scripts/seed-e2e.sh
+
+      - name: Apply Elasticsearch ILM + index template
+        run: ES_URL=http://localhost:9200 ./scripts/apply-elasticsearch-ilm.sh
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "10"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browser
+        working-directory: src/frontend
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run real-stack journey
+        working-directory: src/frontend
+        env:
+          REAL_STACK: "1"
+          PLAYWRIGHT_BASE_URL: http://localhost:3000
+          E2E_API_URL: http://localhost:5190
+          # The seeded dev credentials live in the realm JSON; secrets override.
+          E2E_USER: ${{ secrets.E2E_USER || 'e2e@stacksift.local' }}
+          E2E_PASSWORD: ${{ secrets.E2E_PASSWORD || 'E2eRunner!23' }}
+        run: pnpm exec playwright test --project=real-stack
+
+      - name: Dump stack logs on failure
+        if: failure()
+        working-directory: infrastructure/docker
+        run: docker compose logs --no-color --tail 200 api frontend keycloak elasticsearch
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: src/frontend/playwright-report
+          retention-days: 14
+
+      - name: Tear down
+        if: always()
+        working-directory: infrastructure/docker
+        run: docker compose down -v

@@ -1,6 +1,6 @@
 # Frontend — Current State
 
-> **Last updated:** 2026-06-10 (GA4 product analytics — PM-6 / M6.1)
+> **Last updated:** 2026-06-10 (Playwright real-stack e2e — FE-7 / M2.6)
 > **Sprint:** Post-Sprint-5 — billing, log-source UX, settings, and GDPR account screens landed; now Docker-native.
 > **Health:** Tests green (87+ suites at CORE-FUNC, since extended by billing/log-source/settings work). Production build green; lint clean (2 pre-existing TanStack Table warnings). The dashboard now runs **composed in Docker** behind the BFF (see the Docker-integration note under Environment Variables).
 >
@@ -198,7 +198,7 @@ AiAnalysisStatus:    pending | processing | completed | failed
 - [x] **Settings** — tabbed sub-routes: organization, members, api, billing, account/data (GDPR export)
 - [x] **Billing** — `/billing/checkout` + `/settings/billing` (Stripe checkout + portal), `useUpgradePlan`/`useBillingPortal`/`useSubscription`
 - [x] **Log-source UX** — `/log-sources/[id]` integration view (key reveal/regenerate/delete, test-ingest)
-- [~] **Playwright e2e tests** — 5 specs present (a11y, dark-mode, dashboard, navigation, new-alert-rule), run in mock mode; no full real-stack journey yet
+- [x] **Playwright e2e tests** — mock suite (default, `chromium` project) + **real-stack journey** (FE-7 / M2.6): `REAL_STACK=1` runs `e2e/real-stack/` (`auth.setup.ts` real-Keycloak login → `core-journey.spec.ts`: project → log source → ingest → /logs round-trip) against composed stack; `e2e-real.yml` (dispatch + nightly). Fixture via `scripts/seed-e2e.sh` (KC admin API user + app-DB org/user). See `docs/test-coverage.md` § Frontend E2E.
 - [ ] **Accessibility audit** — axe DevTools, M2.7 deliverable. Lighthouse CI now gates a11y `error ≥0.90` on public routes (FS-5); remaining known gap = brand-blue contrast on `Button`/links (deferred to its own PR).
 - [x] **Fix test runner** — resolved 2026-04-21 (`ee3e50d`); verified 2026-05-18 at 66 suites / 598 tests. Floor enforced via `jest.globalSetup.ts` (FS-01).
 
@@ -230,6 +230,7 @@ AiAnalysisStatus:    pending | processing | completed | failed
 - **AI Analysis polling:** `useAiAnalysis` polls every 5s while `status` is `pending` or `processing`; stops (returns `false`) when `completed` or `failed`.
 - **Tailwind v4 `@theme` aliases** must mirror the exact utility class names used in components — a missing alias causes silent no-color rendering
 - **Lighthouse CI audits public routes only.** `(dashboard)/layout.tsx` server-redirects to `/landing` without a session cookie, so lhci (which cold-loads URLs cookie-less) can only audit `/landing`, `/login`, `/register`. To audit dashboard routes you'd need a puppeteer login step to seed the mock session — intentionally not done.
+- **Real-stack e2e seeding is admin-API, not realm-import.** Keycloak realm import is **skipped when the `stacksift` realm already exists** (any dev volume that's seen a prior `up`), so users/passwords added to `stacksift-realm.json` don't land without a destructive `docker compose down -v`. `scripts/seed-e2e.sh` therefore provisions the e2e user via the Keycloak **admin API** (idempotent, bypasses the realm password policy, non-destructive) and seeds the matching app-DB rows with the user's **actual** KC id (`User.Id == Keycloak id`). The journey only runs under `REAL_STACK=1`; the default `pnpm test:e2e` is mock-only and unaffected.
 - **Known a11y debt (deferred):** primary `Button` (white on `#2b7fff` = 3.76:1) and `text-blue-500` links (4.46:1) fail WCAG AA contrast. Surfaced by the lhci gate; fixing means darkening the brand blue app-wide (own PR). The gate passes today because `/register` still scores 0.92 a11y after the two cheap fixes (`ToastContainer` `role="region"`, `(auth)` layout `#main-content` skip-link target).
 - **GA4 analytics no-ops without a measurement ID.** `trackEvent` (`lib/analytics.ts`) only calls gtag when `NEXT_PUBLIC_GA_MEASUREMENT_ID` is baked in (production images), so dev/test/jsdom fire nothing. Fire events via `trackEvent(AnalyticsEvent.X, params)` — never call `sendGAEvent`/`gtag` directly, and never put PII in params. `first_log_ingested` is a live 0→>0 dashboard approximation; `plan_upgraded` fires on `/billing/success` (completion), `checkout_started` in `useUpgradePlan` (initiation). Consent-mode banner is a documented follow-up (`docs/pii-inventory.md`). Property creation + live Realtime/DebugView verification is a manual step (needs a Google account).
 

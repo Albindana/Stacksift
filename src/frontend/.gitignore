@@ -42,3 +42,6 @@ next-env.d.ts
 
 # lighthouse ci reports
 .lighthouseci
+
+# Playwright real-stack saved auth state
+e2e/.auth/
