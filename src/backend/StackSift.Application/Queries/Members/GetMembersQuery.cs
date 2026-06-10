@@ -27,12 +27,10 @@ public sealed class GetMembersQueryHandler(IUnitOfWork uow, ICurrentUserService 
             .Distinct()
             .ToHashSet();
 
-        var inviters = new Dictionary<Guid, string>(inviterIds.Count);
-        foreach (var id in inviterIds)
-        {
-            var inviter = await uow.Users.GetByIdAsync(id, ct);
-            if (inviter is not null) inviters[id] = inviter.DisplayName;
-        }
+        var inviterList = inviterIds.Count > 0
+            ? await uow.Users.GetManyByIdAsync(inviterIds, ct)
+            : [];
+        var inviters = inviterList.ToDictionary(u => u.Id, u => u.DisplayName);
 
         return members
             .Select(m =>
