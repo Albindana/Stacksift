@@ -1,6 +1,6 @@
 # Frontend — Current State
 
-> **Last updated:** 2026-05-31 (Docker end-to-end integration)
+> **Last updated:** 2026-06-10 (Lighthouse CI — FS-5)
 > **Sprint:** Post-Sprint-5 — billing, log-source UX, settings, and GDPR account screens landed; now Docker-native.
 > **Health:** Tests green (87+ suites at CORE-FUNC, since extended by billing/log-source/settings work). Production build green; lint clean (2 pre-existing TanStack Table warnings). The dashboard now runs **composed in Docker** behind the BFF (see the Docker-integration note under Environment Variables).
 >
@@ -19,6 +19,7 @@
 | FE-05 | Next.js App Router route structure — 27 files, 2 route groups `(auth)` / `(dashboard)` | ✅ Done |
 | FE-06 | State management — TanStack Query v5 + Zustand stores + mock data + query hooks | ✅ Done |
 | FE-08 | Performance baseline — Lighthouse, bundle analysis, code splitting | ✅ Done |
+| FS-5 | Lighthouse CI — `@lhci/cli` + `lighthouserc.json` + `lighthouse` CI job; audits public `(auth)` routes, a11y/best-practices gate as `error ≥0.90` | ✅ (2026-06-10) |
 | US-01 | Google SSO auth via BFF pattern (Keycloak PKCE, HTTP-only session cookies) | ✅ Done |
 | US-02 | Sign-out (Zustand clear → TanStack Query clear → Keycloak logout) | ✅ Done |
 | US-03 | Onboarding — Create Organisation multi-step form | ✅ Done |
@@ -105,6 +106,7 @@
 | `src/app/hooks/mutations/use-trigger-ai-analysis.ts` | POST `/api/v1/incidents/{id}/analyze` → 202; seeds the aiAnalyses cache and 429s into a plan-cap warning toast |
 | `src/app/components/providers/AuthGuard.tsx` | Redirects unauthenticated users to `/landing?next=...` (NUF-3) |
 | `src/app/components/providers/OrgGuard.tsx` | NUF-4 — Four-state matrix: has-org passes through (or bounces off `/onboarding` and `/waiting`); owner-no-org → `/onboarding`; non-owner-no-org → `/waiting`. Reads `useAuthStore.user`. |
+| `lighthouserc.json` | FS-5 — lhci config. Audits public `(auth)` routes (`/landing`, `/login`, `/register`); a11y/best-practices `error ≥0.90`, perf/SEO `warn`; `--no-sandbox` for root/self-hosted runners. Driven by the `lighthouse` job in `.github/workflows/ci.yml`. |
 
 ---
 
@@ -194,7 +196,7 @@ AiAnalysisStatus:    pending | processing | completed | failed
 - [x] **Billing** — `/billing/checkout` + `/settings/billing` (Stripe checkout + portal), `useUpgradePlan`/`useBillingPortal`/`useSubscription`
 - [x] **Log-source UX** — `/log-sources/[id]` integration view (key reveal/regenerate/delete, test-ingest)
 - [~] **Playwright e2e tests** — 5 specs present (a11y, dark-mode, dashboard, navigation, new-alert-rule), run in mock mode; no full real-stack journey yet
-- [ ] **Accessibility audit** — axe DevTools, M2.7 deliverable
+- [ ] **Accessibility audit** — axe DevTools, M2.7 deliverable. Lighthouse CI now gates a11y `error ≥0.90` on public routes (FS-5); remaining known gap = brand-blue contrast on `Button`/links (deferred to its own PR).
 - [x] **Fix test runner** — resolved 2026-04-21 (`ee3e50d`); verified 2026-05-18 at 66 suites / 598 tests. Floor enforced via `jest.globalSetup.ts` (FS-01).
 
 ---
@@ -224,6 +226,8 @@ AiAnalysisStatus:    pending | processing | completed | failed
 - **`useIncidentAlerts` workaround:** incident DTOs carry only `alertIds: string[]`; this hook fetches `GET /api/v1/alerts?incidentId=...` as a workaround.
 - **AI Analysis polling:** `useAiAnalysis` polls every 5s while `status` is `pending` or `processing`; stops (returns `false`) when `completed` or `failed`.
 - **Tailwind v4 `@theme` aliases** must mirror the exact utility class names used in components — a missing alias causes silent no-color rendering
+- **Lighthouse CI audits public routes only.** `(dashboard)/layout.tsx` server-redirects to `/landing` without a session cookie, so lhci (which cold-loads URLs cookie-less) can only audit `/landing`, `/login`, `/register`. To audit dashboard routes you'd need a puppeteer login step to seed the mock session — intentionally not done.
+- **Known a11y debt (deferred):** primary `Button` (white on `#2b7fff` = 3.76:1) and `text-blue-500` links (4.46:1) fail WCAG AA contrast. Surfaced by the lhci gate; fixing means darkening the brand blue app-wide (own PR). The gate passes today because `/register` still scores 0.92 a11y after the two cheap fixes (`ToastContainer` `role="region"`, `(auth)` layout `#main-content` skip-link target).
 
 ### NUF-3 (in-app login + register)
 
