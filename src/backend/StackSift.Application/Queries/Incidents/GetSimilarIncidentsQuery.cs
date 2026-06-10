@@ -30,14 +30,21 @@ public class GetSimilarIncidentsQueryHandler(IUnitOfWork uow, ICurrentUserServic
 
         if (matches.Count == 0) return [];
 
+        var analysisIds = matches.Select(m => m.AnalysisId).ToHashSet();
+        var analyses = await uow.AiAnalyses.GetManyByIdAsync(analysisIds, ct);
+        var analysesById = analyses.ToDictionary(a => a.Id);
+
+        var incidentIds = analyses.Select(a => a.IncidentId).ToHashSet();
+        var fetchedIncidents = incidentIds.Count > 0
+            ? await uow.Incidents.GetManyByIdAsync(incidentIds, ct)
+            : [];
+        var incidentsById = fetchedIncidents.ToDictionary(i => i.Id);
+
         var ordered = new List<SimilarIncidentDto>(matches.Count);
         foreach (var match in matches)
         {
-            var analysis = await uow.AiAnalyses.GetByIdAsync(match.AnalysisId, ct);
-            if (analysis is null) continue;
-
-            var sourceIncident = await uow.Incidents.GetByIdAsync(analysis.IncidentId, ct);
-            if (sourceIncident is null) continue;
+            if (!analysesById.TryGetValue(match.AnalysisId, out var analysis)) continue;
+            if (!incidentsById.TryGetValue(analysis.IncidentId, out var sourceIncident)) continue;
             if (sourceIncident.OrganizationId != currentUser.OrganizationId) continue;
             if (sourceIncident.Id == request.IncidentId) continue;
 

@@ -39,4 +39,9 @@ public class UserRepository(AppDbContext context)
                     || u.Role == Domain.Enums.UserRole.Admin))
             .OrderBy(u => u.DisplayName)
             .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<User>> GetManyByIdAsync(IEnumerable<Guid> ids, CancellationToken ct = default)
+        => await Set
+            .Where(u => ids.Contains(u.Id))
+            .ToListAsync(ct);
 }

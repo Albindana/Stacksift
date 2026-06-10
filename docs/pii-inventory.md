@@ -50,9 +50,21 @@ Stripe records (365 days / 7 years) overrides the per-user retention for
 the regulatory-required tables; in that case the actor identifiers are
 anonymised but the row IDs are preserved.
 
+## Third-party analytics cookies (GA4)
+
+The dashboard app loads **Google Analytics 4** (PM-6 / M6.1) when a measurement
+ID is baked into the build. GA4 sets first-party **analytics-class** cookies
+(`_ga`, `_ga_<container>`) in the browser to measure usage and the AARRR funnel.
+These are **not** stored by StackSift (no DB column — Google sets and reads them
+client-side); they hold a pseudonymous client identifier, not direct PII. No PII
+is sent in event params (ids/flags only — see `docs/product-metrics.md`). GA is a
+no-op when no measurement ID is configured. A consent-mode banner is a documented
+follow-up; the privacy policy (Plan 11 §3) must disclose GA4 before production use.
+
 ## Cross-references
 
 - Server-side redaction policy: `docs/adr/0009-no-server-side-log-redaction.md`
 - Retention by tier: `docs/retention.md`
 - GDPR endpoints (export + erasure): Plan 09 §9.8 / §9.9
 - Privacy policy surface: Plan 11 §3 (`docs/legal/privacy.md`, forthcoming)
+- Product analytics (NSM + AARRR + GA4 events): `docs/product-metrics.md`

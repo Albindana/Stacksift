@@ -19,6 +19,7 @@
 | FE-05 | Next.js App Router route structure — 27 files, 2 route groups `(auth)` / `(dashboard)` | ✅ Done |
 | FE-06 | State management — TanStack Query v5 + Zustand stores + mock data + query hooks | ✅ Done |
 | FE-08 | Performance baseline — Lighthouse, bundle analysis, code splitting | ✅ Done |
+| PM-6 | Product analytics (GA4) — `<GoogleAnalytics>` gated on measurement ID; `trackEvent` wrapper; 9 AARRR events; North Star + funnel in `docs/product-metrics.md` | ✅ (2026-06-10) |
 | FS-5 | Lighthouse CI — `@lhci/cli` + `lighthouserc.json` + `lighthouse` CI job; audits public `(auth)` routes, a11y/best-practices gate as `error ≥0.90` | ✅ (2026-06-10) |
 | US-01 | Google SSO auth via BFF pattern (Keycloak PKCE, HTTP-only session cookies) | ✅ Done |
 | US-02 | Sign-out (Zustand clear → TanStack Query clear → Keycloak logout) | ✅ Done |
@@ -82,6 +83,7 @@
 | `src/app/(dashboard)/projects/[id]/_components/ProjectDetailView.tsx` | Client component — project header + log sources list |
 | `src/app/lib/mock-data.ts` | All mock data used by query hooks while backend doesn't exist |
 | `src/app/lib/signalr-config.ts` | Hub URL (`NEXT_PUBLIC_SIGNALR_HUB_URL`), method name constants |
+| `src/app/lib/analytics.ts` | GA4 wrapper — `trackEvent(AnalyticsEvent.X, params)` + `AnalyticsEvent` names; no-ops unless `NEXT_PUBLIC_GA_MEASUREMENT_ID` is set. AARRR map in `docs/product-metrics.md` |
 | `src/app/lib/signalr-mock.ts` | Mock hub that emits random LogEntry/Alert events every 2–5s |
 | `src/app/lib/auth/config.ts` | Keycloak URLs, realm, client_id, cookie names |
 | `src/app/lib/auth/session.ts` | Session cookie read/write helpers |
@@ -169,6 +171,7 @@ AiAnalysisStatus:    pending | processing | completed | failed
 | `NEXT_PUBLIC_AUTH_MOCK_NEW_USER` | Mock login returns user with no org | `false` |
 | `NEXT_PUBLIC_SIGNALR_MOCK` | Use fake SignalR hub | `true` |
 | `NEXT_PUBLIC_SIGNALR_HUB_URL` | Real hub URL | `http://localhost:5190/hubs/stacksift` |
+| `NEXT_PUBLIC_GA_MEASUREMENT_ID` | GA4 measurement ID (`G-XXXXXXXXXX`), **baked at build**; absent → GA no-ops | _(unset)_ |
 | `BACKEND_URL` | **Server-side** API base for BFF proxy hops (register / accept-invitation / onboarding-create-org) | `http://api:5190` (container-internal) |
 | `KEYCLOAK_INTERNAL_URL` | Server-side Keycloak base (BFF token/JWKS calls) | `http://keycloak:8080` |
 
@@ -229,6 +232,7 @@ AiAnalysisStatus:    pending | processing | completed | failed
 - **Lighthouse CI audits public routes only.** `(dashboard)/layout.tsx` server-redirects to `/landing` without a session cookie, so lhci (which cold-loads URLs cookie-less) can only audit `/landing`, `/login`, `/register`. To audit dashboard routes you'd need a puppeteer login step to seed the mock session — intentionally not done.
 - **Real-stack e2e seeding is admin-API, not realm-import.** Keycloak realm import is **skipped when the `stacksift` realm already exists** (any dev volume that's seen a prior `up`), so users/passwords added to `stacksift-realm.json` don't land without a destructive `docker compose down -v`. `scripts/seed-e2e.sh` therefore provisions the e2e user via the Keycloak **admin API** (idempotent, bypasses the realm password policy, non-destructive) and seeds the matching app-DB rows with the user's **actual** KC id (`User.Id == Keycloak id`). The journey only runs under `REAL_STACK=1`; the default `pnpm test:e2e` is mock-only and unaffected.
 - **Known a11y debt (deferred):** primary `Button` (white on `#2b7fff` = 3.76:1) and `text-blue-500` links (4.46:1) fail WCAG AA contrast. Surfaced by the lhci gate; fixing means darkening the brand blue app-wide (own PR). The gate passes today because `/register` still scores 0.92 a11y after the two cheap fixes (`ToastContainer` `role="region"`, `(auth)` layout `#main-content` skip-link target).
+- **GA4 analytics no-ops without a measurement ID.** `trackEvent` (`lib/analytics.ts`) only calls gtag when `NEXT_PUBLIC_GA_MEASUREMENT_ID` is baked in (production images), so dev/test/jsdom fire nothing. Fire events via `trackEvent(AnalyticsEvent.X, params)` — never call `sendGAEvent`/`gtag` directly, and never put PII in params. `first_log_ingested` is a live 0→>0 dashboard approximation; `plan_upgraded` fires on `/billing/success` (completion), `checkout_started` in `useUpgradePlan` (initiation). Consent-mode banner is a documented follow-up (`docs/pii-inventory.md`). Property creation + live Realtime/DebugView verification is a manual step (needs a Google account).
 
 ### NUF-3 (in-app login + register)
 

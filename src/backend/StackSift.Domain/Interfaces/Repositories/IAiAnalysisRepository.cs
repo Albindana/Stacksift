@@ -18,5 +18,6 @@ public interface IAiAnalysisRepository : IRepository<AiAnalysis, Guid>
         Guid? excludeId = null,
         CancellationToken ct = default);
 
+    Task<IReadOnlyList<AiAnalysis>> GetManyByIdAsync(IEnumerable<Guid> ids, CancellationToken ct = default);
     Task<int> GetCountByOrgSinceAsync(Guid organizationId, DateTimeOffset since, CancellationToken ct = default);
 }

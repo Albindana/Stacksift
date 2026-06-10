@@ -71,6 +71,11 @@ public class AiAnalysisRepository(AppDbContext context, ICurrentUserService curr
         return rows;
     }
 
+    public async Task<IReadOnlyList<AiAnalysis>> GetManyByIdAsync(IEnumerable<Guid> ids, CancellationToken ct = default)
+        => await BaseQuery
+            .Where(a => ids.Contains(a.Id))
+            .ToListAsync(ct);
+
     public Task<int> GetCountByOrgSinceAsync(Guid organizationId, DateTimeOffset since, CancellationToken ct = default)
         => Set
             .Where(a => a.OrganizationId == organizationId && a.CreatedAt >= since)

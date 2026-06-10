@@ -57,6 +57,11 @@ public class IncidentRepository(AppDbContext context, ICurrentUserService curren
             .Distinct()
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyList<Incident>> GetManyByIdAsync(IEnumerable<Guid> ids, CancellationToken ct = default)
+        => await BaseQuery
+            .Where(i => ids.Contains(i.Id))
+            .ToListAsync(ct);
+
     public async Task<IReadOnlyList<Incident>> GetCreatedSinceByOrgIdAsync(Guid organizationId, DateTimeOffset since, CancellationToken ct = default)
         => await Set
             .Where(i => i.OrganizationId == organizationId && i.CreatedAt >= since)
