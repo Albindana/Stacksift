@@ -11,6 +11,7 @@ import {
 } from '@/app/lib/api-schemas';
 import { useApiError } from '@/app/hooks/useApiError';
 import { useToastStore } from '@/app/hooks/useToastStore';
+import { trackEvent, AnalyticsEvent } from '@/app/lib/analytics';
 import type { LogSourceCreated, LogSourceType, TestIngestResult } from '@/app/types';
 
 interface CreateLogSourceInput {
@@ -38,6 +39,10 @@ export function useCreateLogSource() {
       return response.data;
     },
     onSuccess: async (created, input) => {
+      trackEvent(AnalyticsEvent.LogSourceCreated, {
+        project_id: input.projectId,
+        type: input.type,
+      });
       await queryClient.invalidateQueries({ queryKey: queryKeys.logSources.byProject(input.projectId) });
       await queryClient.invalidateQueries({ queryKey: queryKeys.logSources.organization() });
       queryClient.setQueryData(queryKeys.logSources.detail(created.logSource.id), created.logSource);
