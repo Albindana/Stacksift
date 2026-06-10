@@ -1,0 +1,9 @@
+10015	IGNORE	Informational - auth pages intentionally send no-store; ZAP "re-examine cache-control" is noise here
+10044	IGNORE	False positive - Next.js 307 -> /landing redirect carries a small HTML body, no sensitive data
+10049	IGNORE	Informational - non-storable/storable observations on auth/redirect/404 responses
+10094	IGNORE	False positive - base64-looking substrings inside Next.js build chunks/fonts, not secrets
+10109	IGNORE	Informational - SPA (Next.js) detection, not a vulnerability
+90005	IGNORE	False positive - Sec-Fetch-* are request headers ZAP itself omits; not a server-side issue
+10037	WARN	Real low - "X-Powered-By: Next.js" leaks framework; fix = poweredByHeader:false in next.config.ts (tracked)
+10038	WARN	Medium - enforcing CSP is intentionally Report-Only during rollout; clickjacking already covered by frame-ancestors 'none' + X-Frame-Options DENY (tracked: promote report-only -> enforced)
+90004	WARN	Low - COOP/COEP/CORP cross-origin-isolation headers not set; optional defense-in-depth (hardening backlog)

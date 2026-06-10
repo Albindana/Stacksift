@@ -1,0 +1,59 @@
+name: zap-dast
+
+# OWASP ZAP passive baseline (DAST) — satisfies FS-5 ("OWASP ZAP pentest"),
+# feeds the M5.5 security audit. Scans the live beta (app.dmdailydeals.com) with
+# the ZAP *baseline* profile: spider + passive rules only — NO active scanning,
+# NO attack payloads. Known-acceptable findings are triaged in .zap/rules.tsv.
+#
+# Report-only for now (fail_action: false). Flip it to true once the tracked
+# WARN backlog is cleared (enforce CSP, drop X-Powered-By, add COOP/COEP/CORP) —
+# at which point a *new* high-risk finding will break the run, mirroring the
+# Trivy/Dockle gate in docker-build.yml.
+#
+# Not wired into PR CI on purpose: a production DAST shouldn't run per-PR. The
+# committed baseline lives at docs/security/m5-zap-baseline.html.
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Target base URL to passive-scan"
+        default: "https://app.dmdailydeals.com"
+        type: string
+  schedule:
+    - cron: '0 3 * * 1'   # weekly, Monday 03:00 UTC
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zap-dast
+  cancel-in-progress: false
+
+jobs:
+  baseline:
+    name: ZAP baseline (passive)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: ZAP baseline scan
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: ${{ github.event.inputs.target || 'https://app.dmdailydeals.com' }}
+          rules_file_name: '.zap/rules.tsv'
+          cmd_options: '-a -I'         # -a: include alpha passive rules; -I: never fail on warnings
+          fail_action: false           # report-only; see header note before flipping
+          allow_issue_writing: false   # no issue spam on a recurring scan — artifact below is the record
+
+      - name: Upload ZAP report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-baseline-report
+          path: |
+            report_html.html
+            report_md.md
+            report_json.json
+          if-no-files-found: ignore
+          retention-days: 30
