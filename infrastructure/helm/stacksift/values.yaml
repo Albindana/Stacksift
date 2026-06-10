@@ -24,6 +24,7 @@ hosts:
   files: files.dmdailydeals.com    # MinIO public (presigned downloads)
   n8n: n8n.dmdailydeals.com        # n8n editor UI (webhook is intra-namespace only)
   grafana: grafana.dmdailydeals.com # Grafana dashboards
+  unleash: unleash.dmdailydeals.com # Unleash admin UI (API reaches it intra-namespace)
 
 ingress:
   className: nginx
@@ -308,3 +309,28 @@ grafana:
   resources:
     requests: { cpu: 50m, memory: 128Mi }
     limits:   { memory: 256Mi }
+
+# Feature flags — Unleash (FS-6) + its own Postgres. The API reads flags
+# in-namespace (Unleash__Url=http://unleash:4242/api/ via configmap +
+# Unleash__ClientToken from the app secret). The browser never touches Unleash
+# (BFF: GET /api/v1/features). Ingress is the admin UI only.
+# Pre-created Secret (stacksift-unleash) keys:
+#   DATABASE_PASSWORD, INIT_CLIENT_API_TOKENS, INIT_ADMIN_API_TOKENS.
+# INIT_CLIENT_API_TOKENS MUST equal the app secret's Unleash__ClientToken.
+# ⚠️ Default UI login admin/unleash4all — change it on first login (public URL).
+unleash:
+  enabled: false
+  image: unleashorg/unleash-server:6.6
+  dbImage: postgres:16-alpine
+  secretName: stacksift-unleash
+  storageClass: longhorn
+  ingress:
+    enabled: true
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { memory: 512Mi }
+  db:
+    storage: 1Gi
+    resources:
+      requests: { cpu: 50m, memory: 128Mi }
+      limits:   { memory: 256Mi }

@@ -55,6 +55,9 @@ prometheus:
 # Prereq Secrets (create out-of-band before enabling — see chart README):
 #   stacksift-n8n            (N8N_BASIC_AUTH_USER/PASSWORD, OPENAI_API_KEY, SLACK_WEBHOOK_URL)
 #   stacksift-grafana-admin  (admin-user, admin-password)
+#   stacksift-unleash        (DATABASE_PASSWORD, INIT_CLIENT_API_TOKENS, INIT_ADMIN_API_TOKENS)
+#     + the app secret (stacksift-secrets) must carry Unleash__ClientToken set to
+#       the SAME value as INIT_CLIENT_API_TOKENS (that's what the API authenticates with).
 # Alertmanager routes to in-cluster n8n by default (receiver.webhookUrl); set
 # alertmanager.receiver.slack.enabled + the stacksift-alertmanager Secret to also
 # post directly to Slack.
@@ -65,6 +68,8 @@ alertmanager:
 loki:
   enabled: true
 grafana:
+  enabled: true
+unleash:
   enabled: true
 
 # pgBackRest → MinIO: DISABLED until MinIO serves TLS. pgBackRest's S3 driver

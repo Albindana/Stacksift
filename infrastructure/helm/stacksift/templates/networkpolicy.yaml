@@ -44,7 +44,7 @@ spec:
     matchExpressions:
       - key: app.kubernetes.io/component
         operator: In
-        values: [api, frontend, marketing, keycloak{{ if .Values.minio.publicIngress }}, minio{{ end }}]
+        values: [api, frontend, marketing, keycloak{{ if .Values.minio.publicIngress }}, minio{{ end }}{{ if and .Values.unleash.enabled .Values.unleash.ingress.enabled }}, unleash{{ end }}]
   policyTypes: [Ingress]
   ingress:
     - from:

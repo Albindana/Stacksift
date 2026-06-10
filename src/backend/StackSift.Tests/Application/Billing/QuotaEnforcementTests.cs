@@ -105,11 +105,13 @@ public class TriggerAiAnalysisQuotaTests
     private readonly Mock<IAiAnalysisRepository> _analyses = new();
     private readonly Mock<ICurrentUserService> _currentUser = new();
     private readonly Mock<IAiAnalysisJobRunner> _jobRunner = new();
+    private readonly Mock<IFeatureFlagService> _featureFlags = new();
     private readonly Guid _orgId = Guid.NewGuid();
     private readonly Guid _incidentId = Guid.NewGuid();
 
     public TriggerAiAnalysisQuotaTests()
     {
+        _featureFlags.Setup(x => x.IsEnabled(It.IsAny<string>(), It.IsAny<bool>())).Returns(true);
         _currentUser.Setup(x => x.OrganizationId).Returns(_orgId);
         _uow.Setup(x => x.Organizations).Returns(_orgs.Object);
         _uow.Setup(x => x.Incidents).Returns(_incidents.Object);
@@ -133,7 +135,7 @@ public class TriggerAiAnalysisQuotaTests
         _analyses.Setup(x => x.GetCountByOrgSinceAsync(_orgId, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(10);
 
-        var handler = new TriggerAiAnalysisCommandHandler(_uow.Object, _currentUser.Object, _jobRunner.Object);
+        var handler = new TriggerAiAnalysisCommandHandler(_uow.Object, _currentUser.Object, _jobRunner.Object, _featureFlags.Object);
 
         var ex = await Assert.ThrowsAsync<PlanLimitExceededException>(() =>
             handler.Handle(new TriggerAiAnalysisCommand(_incidentId), default));
@@ -155,7 +157,7 @@ public class TriggerAiAnalysisQuotaTests
         _analyses.Setup(x => x.GetCountByOrgSinceAsync(_orgId, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(100);
 
-        var handler = new TriggerAiAnalysisCommandHandler(_uow.Object, _currentUser.Object, _jobRunner.Object);
+        var handler = new TriggerAiAnalysisCommandHandler(_uow.Object, _currentUser.Object, _jobRunner.Object, _featureFlags.Object);
 
         await Assert.ThrowsAsync<PlanLimitExceededException>(() =>
             handler.Handle(new TriggerAiAnalysisCommand(_incidentId), default));
@@ -167,7 +169,7 @@ public class TriggerAiAnalysisQuotaTests
         _orgs.Setup(x => x.GetByIdAsync(_orgId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Organization { Id = _orgId, Plan = Plan.Team });
 
-        var handler = new TriggerAiAnalysisCommandHandler(_uow.Object, _currentUser.Object, _jobRunner.Object);
+        var handler = new TriggerAiAnalysisCommandHandler(_uow.Object, _currentUser.Object, _jobRunner.Object, _featureFlags.Object);
         var result = await handler.Handle(new TriggerAiAnalysisCommand(_incidentId), default);
 
         result.Should().NotBeNull();
@@ -195,7 +197,7 @@ public class TriggerAiAnalysisQuotaTests
             .Callback<Guid, DateTimeOffset, CancellationToken>((_, since, _) => capturedSince = since)
             .ReturnsAsync(0);
 
-        var handler = new TriggerAiAnalysisCommandHandler(_uow.Object, _currentUser.Object, _jobRunner.Object);
+        var handler = new TriggerAiAnalysisCommandHandler(_uow.Object, _currentUser.Object, _jobRunner.Object, _featureFlags.Object);
         await handler.Handle(new TriggerAiAnalysisCommand(_incidentId), default);
 
         capturedSince.Should().Be(expectedStart);
@@ -212,7 +214,7 @@ public class TriggerAiAnalysisQuotaTests
             .Callback<Guid, DateTimeOffset, CancellationToken>((_, since, _) => capturedSince = since)
             .ReturnsAsync(0);
 
-        var handler = new TriggerAiAnalysisCommandHandler(_uow.Object, _currentUser.Object, _jobRunner.Object);
+        var handler = new TriggerAiAnalysisCommandHandler(_uow.Object, _currentUser.Object, _jobRunner.Object, _featureFlags.Object);
         await handler.Handle(new TriggerAiAnalysisCommand(_incidentId), default);
 
         capturedSince.Should().NotBeNull();

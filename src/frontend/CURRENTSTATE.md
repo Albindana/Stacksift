@@ -1,6 +1,6 @@
 # Frontend — Current State
 
-> **Last updated:** 2026-06-10 (Playwright real-stack e2e — FE-7 / M2.6)
+> **Last updated:** 2026-06-10 (Feature flags — Unleash, FS-6 / M5.6)
 > **Sprint:** Post-Sprint-5 — billing, log-source UX, settings, and GDPR account screens landed; now Docker-native.
 > **Health:** Tests green (87+ suites at CORE-FUNC, since extended by billing/log-source/settings work). Production build green; lint clean (2 pre-existing TanStack Table warnings). The dashboard now runs **composed in Docker** behind the BFF (see the Docker-integration note under Environment Variables).
 >
@@ -21,6 +21,7 @@
 | FE-08 | Performance baseline — Lighthouse, bundle analysis, code splitting | ✅ Done |
 | PM-6 | Product analytics (GA4) — `<GoogleAnalytics>` gated on measurement ID; `trackEvent` wrapper; 9 AARRR events; North Star + funnel in `docs/product-metrics.md` | ✅ (2026-06-10) |
 | FS-5 | Lighthouse CI — `@lhci/cli` + `lighthouserc.json` + `lighthouse` CI job; audits public `(auth)` routes, a11y/best-practices gate as `error ≥0.90` | ✅ (2026-06-10) |
+| FS-6 | Feature flags (Unleash) — `useFeatureFlag('ai-analysis')` (via BFF `GET /api/v1/features`, ~20s refetch) hides the "Analyze with AI" button when off; backend is the authoritative 403 gate. See `docs/feature-flags.md` | ✅ (2026-06-10) |
 | US-01 | Google SSO auth via BFF pattern (Keycloak PKCE, HTTP-only session cookies) | ✅ Done |
 | US-02 | Sign-out (Zustand clear → TanStack Query clear → Keycloak logout) | ✅ Done |
 | US-03 | Onboarding — Create Organisation multi-step form | ✅ Done |

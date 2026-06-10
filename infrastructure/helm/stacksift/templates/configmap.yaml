@@ -50,4 +50,10 @@ data:
   {{- else }}
   # NOTE: Serilog__Loki__Url unset (no Loki) → console logging only.
   {{- end }}
+  {{- if .Values.unleash.enabled }}
+  # Feature flags (FS-6). Server SDK → in-namespace Unleash. The matching
+  # Unleash__ClientToken is a secret (app secret, from secrets.env). When unset
+  # the API fails open (feature stays on).
+  Unleash__Url: "http://unleash:4242/api/"
+  {{- end }}
   # OTEL_EXPORTER_OTLP_ENDPOINT intentionally unset (Tempo/OTLP is bucket B).
