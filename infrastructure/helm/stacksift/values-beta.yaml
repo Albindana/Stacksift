@@ -71,6 +71,8 @@ grafana:
   enabled: true
 unleash:
   enabled: true
+uptimeKuma:
+  enabled: true
 
 # pgBackRest → MinIO: DISABLED until MinIO serves TLS. pgBackRest's S3 driver
 # requires HTTPS and has no plain-http option (verify-tls=n only skips cert

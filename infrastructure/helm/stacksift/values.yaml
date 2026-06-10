@@ -25,6 +25,7 @@ hosts:
   n8n: n8n.dmdailydeals.com        # n8n editor UI (webhook is intra-namespace only)
   grafana: grafana.dmdailydeals.com # Grafana dashboards
   unleash: unleash.dmdailydeals.com # Unleash admin UI (API reaches it intra-namespace)
+  uptime: status.dmdailydeals.com   # Uptime Kuma status page + admin UI
 
 ingress:
   className: nginx
@@ -334,3 +335,19 @@ unleash:
     resources:
       requests: { cpu: 50m, memory: 128Mi }
       limits:   { memory: 256Mi }
+
+# Uptime Kuma (DO-7 / M4.6) — status page (hosts.uptime) + monitors. SQLite in
+# the PVC; runs as root (the image chowns /app/data). No prereq Secret — config
+# is applied post-deploy by scripts/bootstrap-uptime-kuma.py (Slack from
+# SLACK_WEBHOOK_URL, email via Resend Smtp__* — both from secrets.env).
+# Caveat: an in-cluster monitor can't alert when the cluster itself is down.
+uptimeKuma:
+  enabled: false
+  image: louislam/uptime-kuma:1
+  storage: 1Gi
+  storageClass: longhorn
+  ingress:
+    enabled: true
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits:   { memory: 256Mi }
