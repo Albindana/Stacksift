@@ -118,3 +118,46 @@ Run `dotnet test --collect:"XPlat Code Coverage"` to regenerate.
 | **Total** | **~60–90 seconds** |
 
 Containers start once per `dotnet test` run. All test classes in the same `[Collection]` share a single fixture instance — no per-class or per-test container restart.
+
+---
+
+## Frontend E2E (Playwright)
+
+Two modes, selected by `REAL_STACK`:
+
+| Mode | Project(s) | Auth / data | Server | When |
+|---|---|---|---|---|
+| **Mock** (default) | `chromium` | `NEXT_PUBLIC_AUTH_MOCK=true` (auto-Alice) | `pnpm dev` webServer | `pnpm test:e2e` — fast specs (a11y, navigation, dashboard, …); ignores `e2e/real-stack/` |
+| **Real-stack** (`REAL_STACK=1`) | `real-setup` → `real-stack` | real Keycloak ROPC + seeded org/user | none — points at composed stack via `PLAYWRIGHT_BASE_URL` | `e2e-real` workflow (dispatch + nightly); the M2.6 "one complete flow in CI" |
+
+### Real-stack journey (FE-7 / M2.6)
+
+`e2e/real-stack/core-journey.spec.ts` proves the value loop with nothing mocked:
+login (real Keycloak) → create project → create log source → **ingest a log via
+`POST /api/v1/logs/ingest`** → see it on `/logs` (a genuine ingest → RabbitMQ →
+Elasticsearch → UI round-trip). `auth.setup.ts` logs in once and saves
+`storageState` so the journey starts authenticated.
+
+**Fixture (`scripts/seed-e2e.sh`).** The journey needs a deterministic login
+*and* matching app-DB rows. The script provisions both idempotently via the
+Keycloak **admin API** (a `e2e@stacksift.local` owner with `organization_id`/
+`stacksift_role` claims + a non-temporary password) and `psql` (the
+`Organizations` + `Users` rows, `User.Id == Keycloak id`). It is used instead of
+realm-import credentials because import is **skipped when the realm already
+exists** (dev volumes) and the realm enforces a password policy — the admin API
+works on fresh *and* existing realms without a destructive `down -v`.
+
+### Run it locally
+
+```bash
+cd infrastructure/docker && docker compose up -d --wait \
+  postgres elasticsearch redis rabbitmq keycloak minio minio-init api frontend
+docker compose --profile migrate run --rm migrate     # create the schema
+cd ../.. && ./scripts/seed-e2e.sh                      # KC user + app-DB rows
+ES_URL=http://localhost:9200 ./scripts/apply-elasticsearch-ilm.sh
+cd src/frontend && REAL_STACK=1 PLAYWRIGHT_BASE_URL=http://localhost:3000 \
+  E2E_API_URL=http://localhost:5190 pnpm exec playwright test --project=real-stack
+```
+
+The mock suite is unaffected: `pnpm exec playwright test` still runs only
+`chromium` with its `pnpm dev` webServer.
