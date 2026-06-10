@@ -1,0 +1,70 @@
+name: deploy-chart
+
+# Helm-chart-only changes don't match docker-build.yml's `src/**` path filter,
+# so they never reach its deploy-beta job — a chart change merged to develop
+# wouldn't deploy. This workflow fills that gap: it helm-upgrades project-07 on
+# chart changes WITHOUT rebuilding images.
+#
+# Image-pin safety: values-beta.yaml carries a *baseline* pin that is usually
+# OLDER than what deploy-beta last --set on the live release. Applying
+# values-beta as-is would roll the app back, so we read the live pins off the
+# release and re-apply them — only the chart templates change. The `beta`
+# environment gate means a human approves (and sees the echoed pins) first.
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - 'infrastructure/helm/stacksift/**'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-beta            # serialize with docker-build.yml's deploy-beta
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: helm upgrade (chart only)
+    runs-on: ubuntu-latest
+    environment:
+      name: beta
+      url: https://app.dmdailydeals.com
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.BETA_KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
+
+      - name: Helm upgrade (preserve live image pins)
+        run: |
+          # Reuse the image tags from the live release so a chart-only change
+          # never rolls the app images; apply the current values-beta for enables.
+          pins=$(helm get values stacksift -n project-07 -o yaml \
+            | awk '$1=="images:"{f=1;next} f&&/^[^ ]/{f=0} f&&/^  [A-Za-z]+:/{s=$1;gsub(":","",s)} f&&$1=="tag:"{print "--set images."s".tag="$2}' \
+            | tr '\n' ' ')
+          echo "Preserving live image pins: ${pins:-<none found>}"
+          if [ -z "$pins" ]; then
+            echo "::error::could not read live image pins from the release — aborting to avoid a values-beta downgrade."
+            exit 1
+          fi
+          helm upgrade --install stacksift infrastructure/helm/stacksift \
+            -n project-07 \
+            -f infrastructure/helm/stacksift/values-beta.yaml \
+            $pins \
+            --wait --timeout 10m
+
+      - name: Run summary
+        if: always()
+        run: |
+          {
+            echo "## Chart deploy"
+            echo ""
+            echo "Helm-upgraded \`stacksift\` (chart-only) — images preserved from the live release."
+            helm list -n project-07 | tail -1 || true
+          } >> "$GITHUB_STEP_SUMMARY"
