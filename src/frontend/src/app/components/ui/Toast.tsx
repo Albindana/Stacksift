@@ -181,6 +181,7 @@ export function ToastContainer() {
 
   return (
     <div
+      role="region"
       aria-label="Notifications"
       className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none"
     >

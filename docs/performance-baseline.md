@@ -42,6 +42,58 @@ npx lighthouse http://localhost:3000/logs --output html --output-path ./lighthou
 
 ---
 
+## 1b. Lighthouse CI (automated gate — FS-5)
+
+The manual runs above are now backed by an automated CI gate. A `lighthouse` job in
+`.github/workflows/ci.yml` runs `lhci autorun` (`@lhci/cli`) on every frontend change
+and every push to `main`/`develop`. Config: `src/frontend/lighthouserc.json`.
+
+### What it audits
+
+The frontend is built in mock-auth mode (`NEXT_PUBLIC_AUTH_MOCK=true`) and served with
+`pnpm start`. lhci audits the **public `(auth)` routes** — `/landing`, `/login`,
+`/register` — three runs each (median), desktop preset.
+
+> **Why not the dashboard routes?** `(dashboard)/layout.tsx` is a server component that
+> `redirect()`s to `/landing` when there is no session cookie. lhci cold-loads URLs with
+> no cookie, so `/`, `/logs`, etc. would audit the redirect target, not the page. Auditing
+> them would require seeding a mock session (a puppeteer login step) — deliberately deferred
+> to keep the gate robust and mock-free.
+
+### Budgets (calibrated 2026-06-10)
+
+| Category / metric | Level | Threshold | Current floor |
+|---|---|---|---|
+| `categories:accessibility` | **error** | ≥ 0.90 | 0.92 (`/register`) |
+| `categories:best-practices` | **error** | ≥ 0.90 | 0.96 (`/login`) |
+| `categories:performance` | warn | ≥ 0.80 | 0.99 |
+| `categories:seo` | warn | ≥ 0.85 | 1.00 |
+| `largest-contentful-paint` | warn | ≤ 3000 ms | ~890 ms |
+| `total-blocking-time` | warn | ≤ 300 ms | 0 ms |
+| `cumulative-layout-shift` | warn | ≤ 0.1 | 0.032 (`/login`) |
+
+a11y and best-practices are deterministic, so they gate as hard `error`s; performance is
+`warn`-only so shared-runner CPU jitter cannot flap CI red. Reports upload to lhci's
+`temporary-public-storage` — the run prints a public report link per URL.
+
+### Run locally
+
+```bash
+cd src/frontend
+pnpm build
+CHROME_PATH=$(which chromium) pnpm exec lhci autorun   # or rely on system Chrome
+```
+
+### Known a11y follow-up (deferred)
+
+The gate surfaced a brand-colour contrast issue not yet fixed: the primary `Button`
+(white on `#2b7fff` = 3.76:1) and `text-blue-500` links (4.46:1) fall just under WCAG AA.
+Fixing it means darkening the brand blue app-wide (own PR — see `docs/ai-log.md` 2026-06-10).
+Two cheaper a11y bugs the gate found *were* fixed in the same change: `ToastContainer`
+`role="region"` and a `#main-content` skip-link target in the `(auth)` layout.
+
+---
+
 ## 2. Bundle Analysis
 
 ### How to run

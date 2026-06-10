@@ -225,6 +225,71 @@ jobs:
         run: pnpm build
 
   # ---------------------------------------------------------------------------
+  # Lighthouse CI — performance / a11y / best-practices / SEO budgets (FS-5).
+  # Builds the dashboard in mock-auth mode and audits the public (auth) routes
+  # — /landing, /login, /register — which render without a Keycloak session.
+  # Dashboard routes are NOT audited: their server-component layout redirects
+  # to /landing without a session cookie (see src/frontend/lighthouserc.json).
+  # Separate from the `frontend` job so a flaky audit never blocks unit tests.
+  # ---------------------------------------------------------------------------
+  lighthouse:
+    name: Lighthouse CI
+    runs-on: ubuntu-latest
+    needs: [changes]
+    if: needs.changes.outputs.frontend == 'true' || github.event_name == 'push'
+    env:
+      NEXT_PUBLIC_AUTH_MOCK: 'true'
+      NEXT_PUBLIC_AUTH_MOCK_NEW_USER: 'false'
+      NEXT_PUBLIC_SIGNALR_MOCK: 'true'
+      NEXT_PUBLIC_API_URL: 'http://localhost:5190'
+      NEXT_PUBLIC_APP_URL: 'http://localhost:3000'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: '10'
+
+      # Self-hosted runners do not ship Chrome; install it and hand the path to
+      # lhci via CHROME_PATH (chrome-launcher honours it). --no-sandbox is set in
+      # lighthouserc.json because the runner may execute as root.
+      - name: Setup Chrome
+        id: setup-chrome
+        uses: browser-actions/setup-chrome@v1
+        with:
+          install-dependencies: true
+
+      - name: Get pnpm store path
+        id: pnpm-cache
+        run: echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        working-directory: src/frontend
+        run: pnpm build
+
+      - name: Lighthouse CI (lhci autorun)
+        working-directory: src/frontend
+        env:
+          CHROME_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
+        run: pnpm exec lhci autorun
+
+  # ---------------------------------------------------------------------------
   # Marketing — Next.js / pnpm (stacksift.io landing page)
   # ---------------------------------------------------------------------------
   marketing:
