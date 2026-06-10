@@ -76,11 +76,16 @@ GA4's automatic `page_view` covers navigation, so no manual route events are nee
   only when `NEXT_PUBLIC_GA_MEASUREMENT_ID` is set.
 - **Events:** `trackEvent(AnalyticsEvent.X, params)` from `src/app/lib/analytics.ts`.
   Event names are centralised in the `AnalyticsEvent` constant.
-- **Env:** `NEXT_PUBLIC_GA_MEASUREMENT_ID` is a frontend **build arg** (baked),
-  wired in `src/frontend/Dockerfile`, `docker-compose.yml`, and the
-  `docker-build.yml` matrix (sourced from the `NEXT_PUBLIC_GA_MEASUREMENT_ID`
-  repo variable). Absent → analytics is a silent no-op. GA4 has no server secret;
-  the measurement ID is public by design.
+- **Env:** `NEXT_PUBLIC_GA_MEASUREMENT_ID` is a frontend **build arg, baked at
+  image-build time** (Next.js inlines `NEXT_PUBLIC_*` into the bundle during
+  `pnpm build`). It is **not** read at runtime — a k8s Secret / namespace env
+  var would *not* reach the browser, so it must be set at build. Wired in
+  `src/frontend/Dockerfile`, `docker-compose.yml`, and `docker-build.yml`. The
+  deployed `app.dmdailydeals.com` beta (`build-beta` job) bakes
+  **`G-7LVK4X9J96`** by default; override with the `NEXT_PUBLIC_GA_MEASUREMENT_ID`
+  repo variable. The generic stacksift.com build leaves it empty (no GA property
+  there). Absent → analytics is a silent no-op. GA4 has no server secret; the
+  measurement ID is public by design (it ships in client JS).
 - **Privacy:** GA4 sets analytics cookies — recorded in `docs/pii-inventory.md`.
 
 ## Verifying (manual — needs a real GA4 property)
