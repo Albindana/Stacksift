@@ -17,6 +17,7 @@
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
     "@microsoft/signalr": "^8.0.17",
+    "@next/third-parties": "16.2.6",
     "@tanstack/react-query": "^5.100.14",
     "@tanstack/react-table": "^8.21.3",
     "@tanstack/react-virtual": "^3.13.26",
@@ -28,7 +29,6 @@
     "lucide-react": "^0.469.0",
     "next": "^16.2.6",
     "pino": "^10.3.1",
-    "posthog-js": "^1.376.4",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-hook-form": "^7.76.1",

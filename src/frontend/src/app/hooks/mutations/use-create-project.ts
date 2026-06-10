@@ -7,6 +7,7 @@ import { queryKeys } from '@/app/lib/query-keys';
 import { apiClient } from '@/app/lib/api-client';
 import { useApiError } from '@/app/hooks/useApiError';
 import { useToastStore } from '@/app/hooks/useToastStore';
+import { trackEvent, AnalyticsEvent } from '@/app/lib/analytics';
 import type { ProjectFormInput } from '@/app/lib/schemas/project';
 import { ProjectSchema } from '@/app/lib/api-schemas';
 import type { Project } from '@/app/types';
@@ -89,6 +90,7 @@ export function useCreateProject() {
     },
 
     onSuccess: async (project) => {
+      trackEvent(AnalyticsEvent.ProjectCreated, { project_id: project.id });
       addToast({
         variant: 'success',
         message: `Project "${project.name}" created successfully.`,

@@ -6,6 +6,7 @@ import { apiClient } from '@/app/lib/api-client';
 import { AiAnalysisSchema, type AiAnalysisFromSchema } from '@/app/lib/api-schemas';
 import { queryKeys } from '@/app/lib/query-keys';
 import { useApiError } from '@/app/hooks/useApiError';
+import { trackEvent, AnalyticsEvent } from '@/app/lib/analytics';
 
 interface TriggerVars {
   incidentId: string;
@@ -26,6 +27,7 @@ export function useTriggerAiAnalysis() {
     },
 
     onSuccess: (analysis) => {
+      trackEvent(AnalyticsEvent.AiAnalysisTriggered, { incident_id: analysis.incidentId });
       queryClient.setQueryData(queryKeys.aiAnalyses.detail(analysis.id), analysis);
       queryClient.invalidateQueries({
         queryKey: queryKeys.incidents.detail(analysis.incidentId),

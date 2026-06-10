@@ -50,11 +50,16 @@ ARG NEXT_PUBLIC_SIGNALR_HUB_URL=http://localhost:5190/hubs/stacksift
 # Closed beta: hide the "create an organisation" path on the register page (the
 # backend still enforces invite-only). Read client-side → baked at build.
 ARG NEXT_PUBLIC_REGISTRATION_INVITE_ONLY=false
+# GA4 product-analytics measurement ID (G-XXXXXXXXXX). Read client-side → baked
+# at build. Empty default → no ID → GA loads nothing and trackEvent no-ops
+# (see src/app/lib/analytics.ts).
+ARG NEXT_PUBLIC_GA_MEASUREMENT_ID=
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL} \
     NEXT_PUBLIC_AUTH_MOCK=${NEXT_PUBLIC_AUTH_MOCK} \
     NEXT_PUBLIC_SIGNALR_MOCK=${NEXT_PUBLIC_SIGNALR_MOCK} \
     NEXT_PUBLIC_SIGNALR_HUB_URL=${NEXT_PUBLIC_SIGNALR_HUB_URL} \
     NEXT_PUBLIC_REGISTRATION_INVITE_ONLY=${NEXT_PUBLIC_REGISTRATION_INVITE_ONLY} \
+    NEXT_PUBLIC_GA_MEASUREMENT_ID=${NEXT_PUBLIC_GA_MEASUREMENT_ID} \
     NEXT_TELEMETRY_DISABLED=1
 
 RUN pnpm --filter ./src/frontend build

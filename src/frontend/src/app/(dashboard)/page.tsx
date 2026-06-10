@@ -1,7 +1,9 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import { useProjects } from '@/app/hooks/queries/use-projects';
 import { useDashboardStats } from '@/app/hooks/queries/use-dashboard-stats';
+import { trackEvent, AnalyticsEvent } from '@/app/lib/analytics';
 import { Card, CardBody } from '@/app/components/ui/Card';
 import { Skeleton } from '@/app/components/ui/Skeleton';
 import { UpgradeBanner } from '@/app/components/layout/UpgradeBanner';
@@ -36,6 +38,19 @@ export default function DashboardPage() {
   const projects = useProjects();
   const stats = useDashboardStats();
   const subscription = useSubscription();
+
+  // Activation (NSM input): fire when this org's logs first start flowing —
+  // a live 0 -> >0 transition observed while the dashboard is open. Not fired
+  // on a cold load that already shows logs (that isn't a "first" we can attribute).
+  const prevLogsRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    const total = stats.data?.totalLogsToday;
+    if (typeof total !== 'number') return;
+    if (prevLogsRef.current === 0 && total > 0) {
+      trackEvent(AnalyticsEvent.FirstLogIngested, { total_logs_today: total });
+    }
+    prevLogsRef.current = total;
+  }, [stats.data?.totalLogsToday]);
 
   const noProjects = projects.data !== undefined && projects.data.length === 0;
   const hasProjects = projects.data !== undefined && projects.data.length > 0;

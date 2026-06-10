@@ -4,6 +4,7 @@ import { useMutation } from '@tanstack/react-query';
 import type { AxiosError } from 'axios';
 import { apiClient } from '@/app/lib/api-client';
 import { CheckoutSessionSchema, type CheckoutSession } from '@/app/lib/billing-schemas';
+import { trackEvent, AnalyticsEvent } from '@/app/lib/analytics';
 
 export type UpgradePlanTier = 'indie' | 'team';
 
@@ -29,6 +30,12 @@ export function useUpgradePlan() {
         { schema: CheckoutSessionSchema },
       );
       return response.data;
+    },
+    // Fires once per checkout initiation, from both entry points (the funnel
+    // /billing/checkout bootstrap and the settings billing panel) since both go
+    // through this hook. `plan_upgraded` (completion) fires on /billing/success.
+    onSuccess: (_session, { plan }) => {
+      trackEvent(AnalyticsEvent.CheckoutStarted, { plan });
     },
   });
 }

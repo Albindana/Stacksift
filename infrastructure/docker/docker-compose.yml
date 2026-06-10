@@ -627,6 +627,9 @@ services:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:5190}
         NEXT_PUBLIC_AUTH_MOCK: "false"
         NEXT_PUBLIC_SIGNALR_MOCK: "false"
+        # GA4 analytics — unset locally → GA no-ops. Set NEXT_PUBLIC_GA_MEASUREMENT_ID
+        # in .env to bake it into a local production image.
+        NEXT_PUBLIC_GA_MEASUREMENT_ID: ${NEXT_PUBLIC_GA_MEASUREMENT_ID:-}
     env_file:
       - path: ../../.env.local
         required: false
