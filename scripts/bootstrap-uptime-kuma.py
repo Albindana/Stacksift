@@ -31,28 +31,55 @@ try:
 except ImportError:
     sys.exit("uptime-kuma-api not installed. Run: pip install uptime-kuma-api")
 
+def env(*names, default=""):
+    """First non-empty env var among `names`. Lets the script read the deploy
+    secrets.env directly, whose SMTP keys use .NET-config style (Smtp__Host,
+    Smtp__Password, …) — not SMTP_*. SMTP_* are accepted as overrides."""
+    for n in names:
+        v = os.environ.get(n)
+        if v not in (None, ""):
+            return v
+    return default
+
+
 URL = os.environ.get("UPTIME_KUMA_URL", "http://localhost:3002")
 USERNAME = os.environ.get("UPTIME_KUMA_USERNAME", "admin")
 PASSWORD = os.environ.get("UPTIME_KUMA_PASSWORD")
 SLACK_WEBHOOK_URL = os.environ.get("SLACK_WEBHOOK_URL", "").strip()
 SLACK_CHANNEL = os.environ.get("SLACK_CHANNEL", "#stacksift-uptime")
-SMTP_HOST = os.environ.get("SMTP_HOST", "mailpit")
-SMTP_PORT = int(os.environ.get("SMTP_PORT", "1025"))
-MAIL_FROM = os.environ.get("MAIL_FROM", "uptime@stacksift.local")
-MAIL_TO = os.environ.get("MAIL_TO", "sre@stacksift.local")
+# SMTP reads the deploy secrets.env keys (Smtp__*) directly; SMTP_* override.
+SMTP_HOST = env("SMTP_HOST", "Smtp__Host", default="mailpit")
+SMTP_PORT = int(env("SMTP_PORT", "Smtp__Port", default="1025"))
+SMTP_USERNAME = env("SMTP_USERNAME", "Smtp__Username")        # Resend: "resend"
+SMTP_PASSWORD = env("SMTP_PASSWORD", "Smtp__Password")        # Resend: the API key
+SMTP_SECURE = env("SMTP_SECURE", "Smtp__UseSsl").lower() in ("1", "true", "yes")  # TLS-on-connect (port 465)
+MAIL_FROM = env("MAIL_FROM", "Smtp__FromAddress", default="uptime@stacksift.local")  # a Resend-verified sender
+MAIL_TO = env("MAIL_TO", default="sre@stacksift.local")      # who gets uptime alerts
 STATUS_PAGE_SLUG = os.environ.get("STATUS_PAGE_SLUG", "status")
+# Set STACKSIFT_DOMAIN (e.g. dmdailydeals.com) to monitor the PUBLIC https URLs
+# (deployed env); unset → compose-internal hostnames (local demo).
+DOMAIN = os.environ.get("STACKSIFT_DOMAIN", "").strip()
 
-# Monitors point at compose-INTERNAL hostnames — Kuma evaluates them from inside
-# stacksift-net. (The status page is viewed from the host on :3002.) Swap these
-# for the public https URLs to monitor a deployed environment.
-MONITORS = [
-    {"name": "app",          "url": "http://frontend:3000/api/health", "interval": 60},
-    {"name": "api ready",    "url": "http://api:5190/health/ready",    "interval": 30},
-    {"name": "api live",     "url": "http://api:5190/health/live",     "interval": 30},
-    {"name": "auth",         "url": "http://keycloak:8080/realms/stacksift/.well-known/openid-configuration", "interval": 60},
-    {"name": "grafana",      "url": "http://grafana:3000/api/health",  "interval": 60},
-    {"name": "rabbitmq mgmt","url": "http://rabbitmq:15672",           "interval": 60},
-]
+if DOMAIN:
+    # Deployed: monitor the public https URLs (tests the full DNS→ingress→app path).
+    MONITORS = [
+        {"name": "app",       "url": f"https://app.{DOMAIN}/api/health",   "interval": 60},
+        {"name": "api ready", "url": f"https://api.{DOMAIN}/health/ready", "interval": 30},
+        {"name": "api live",  "url": f"https://api.{DOMAIN}/health/live",  "interval": 30},
+        {"name": "auth",      "url": f"https://auth.{DOMAIN}/realms/stacksift/.well-known/openid-configuration", "interval": 60},
+        {"name": "grafana",   "url": f"https://grafana.{DOMAIN}/api/health", "interval": 60},
+        {"name": "marketing", "url": f"https://www.{DOMAIN}/api/health",   "interval": 60},
+    ]
+else:
+    # Local demo: compose-internal hostnames (Kuma evaluates from inside stacksift-net).
+    MONITORS = [
+        {"name": "app",          "url": "http://frontend:3000/api/health", "interval": 60},
+        {"name": "api ready",    "url": "http://api:5190/health/ready",    "interval": 30},
+        {"name": "api live",     "url": "http://api:5190/health/live",     "interval": 30},
+        {"name": "auth",         "url": "http://keycloak:8080/realms/stacksift/.well-known/openid-configuration", "interval": 60},
+        {"name": "grafana",      "url": "http://grafana:3000/api/health",  "interval": 60},
+        {"name": "rabbitmq mgmt","url": "http://rabbitmq:15672",           "interval": 60},
+    ]
 
 
 def main() -> int:
@@ -78,8 +105,11 @@ def main() -> int:
             api.add_notification(
                 name=email_name, type=NotificationType.SMTP,
                 isDefault=True, applyExisting=False,
-                smtpHost=SMTP_HOST, smtpPort=SMTP_PORT, smtpSecure="",
-                smtpIgnoreTLSError=True, smtpFrom=MAIL_FROM, smtpTo=MAIL_TO,
+                smtpHost=SMTP_HOST, smtpPort=SMTP_PORT,
+                smtpSecure=(True if SMTP_SECURE else ""),       # True = TLS-on-connect (Resend :465)
+                smtpIgnoreTLSError=not SMTP_SECURE,             # Mailpit has no TLS; Resend does
+                smtpUsername=SMTP_USERNAME, smtpPassword=SMTP_PASSWORD,
+                smtpFrom=MAIL_FROM, smtpTo=MAIL_TO,
             )
             notif_ids.append({n["name"]: n["id"] for n in api.get_notifications()}[email_name])
             print(f"+ {email_name} -> {SMTP_HOST}:{SMTP_PORT}")

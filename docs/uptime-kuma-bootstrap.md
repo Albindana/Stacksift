@@ -73,10 +73,44 @@ docker compose start api         # recovery notification + green status page
 Config survives `docker compose restart uptime-kuma` (named volume). A
 `docker compose down -v` wipes it — re-run the script to restore.
 
-## Production (project-07)
+## Deploy to project-07 (Helm)
 
-Uptime Kuma is **not** in the Helm chart by design — an outage monitor should
-live **outside** the cluster it watches. For `project-07`, use an external,
-out-of-cluster monitor against the public health URLs above (a separate Kuma, or
-a hosted checker). The status page + channels here cover the M4.6 demo; an
-in-cluster Kuma is explicitly out of scope.
+Uptime Kuma ships in the chart (`templates/uptime-kuma.yaml`), gated on
+`uptimeKuma.enabled` (on in `values-beta.yaml`): Deployment + PVC + Service +
+an Ingress at **`status.<domain>`** serving the public status page (`/status/status`)
+and the admin UI (`/`). No prereq Secret — config is applied **after** deploy by
+the bootstrap script. It runs as **root** (the image chowns `/app/data`); if the
+namespace enforces the *restricted* Pod Security Standard, grant it an exception.
+
+> **Caveat:** an in-cluster monitor can't alert you when the cluster/ingress
+> itself is down (it's down too). Pair it with an external checker for true
+> outage insurance. It's "is the app healthy", not "is everything down" cover.
+
+### Bootstrap the deployed instance
+
+1. Create the DNS record for `status.<domain>` → ingress-nginx; deploy the chart.
+2. Port-forward to the in-cluster Kuma (avoids WebSocket-over-ingress quirks)
+   and run the script with your real Slack webhook + Resend SMTP, sourced from
+   `secrets.env` (note its keys are **.NET-config style** — `Smtp__Host`,
+   `Smtp__Password`, `Smtp__UseSsl`, … — which the script reads directly):
+
+   ```bash
+   export KUBECONFIG=~/Downloads/project-07.kubeconfig
+   kubectl -n project-07 port-forward svc/uptime-kuma 3002:3001 &
+
+   set -a; . ~/.config/stacksift-deploy/secrets.env; set +a   # SLACK_WEBHOOK_URL + Smtp__*
+   python3 -m venv .venv && .venv/bin/pip install uptime-kuma-api
+   UPTIME_KUMA_PASSWORD='<choose-admin-pw>' \
+     STACKSIFT_DOMAIN=dmdailydeals.com \
+     MAIL_TO='sre@yourteam.com' \
+     .venv/bin/python scripts/bootstrap-uptime-kuma.py
+   ```
+
+   `STACKSIFT_DOMAIN` switches the monitors to the **public** `https://*.<domain>`
+   URLs (tests the full DNS→ingress→app path). Slack uses `SLACK_WEBHOOK_URL`;
+   email uses Resend via the `Smtp__*` keys (`Smtp__UseSsl=true` → TLS on :465).
+   `MAIL_FROM` defaults to `Smtp__FromAddress` (must be a Resend-verified sender).
+
+3. Open `https://status.<domain>` → log in (`admin` / the password you set) →
+   **change nothing else is needed**; the status page is at
+   `https://status.<domain>/status/status`.

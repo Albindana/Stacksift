@@ -25,3 +25,5 @@ zap-out/
 
 # Python venv (e.g. scripts/bootstrap-uptime-kuma.py per docs)
 .venv/
+# Python bytecode cache
+__pycache__/
