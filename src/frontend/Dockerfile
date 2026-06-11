@@ -84,6 +84,11 @@ ENV NODE_ENV=production \
     HOSTNAME=0.0.0.0 \
     NEXT_TELEMETRY_DISABLED=1
 
+# Pick up OS security fixes published after the base image's last rebuild
+# (e.g. CVE-2026-45447 in openssl) — CI Trivy fails the build on any fixed
+# HIGH/CRITICAL, so an unpatched base is a broken build.
+RUN apk upgrade --no-cache
+
 WORKDIR /app
 
 # The standalone output ships its own minimal node_modules.
