@@ -18,3 +18,12 @@ appsettings.Development.json
 walkthrough.md.resolved
 zhelpers/
 *.lscache
+
+# OWASP ZAP local scan scratch output (reports land here; the committed
+# baseline is docs/security/m5-zap-baseline.html)
+zap-out/
+
+# Python venv (e.g. scripts/bootstrap-uptime-kuma.py per docs)
+.venv/
+# Python bytecode cache
+__pycache__/

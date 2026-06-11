@@ -10,6 +10,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using OpenAI;
 using StackExchange.Redis;
+using Unleash;
 using StackSift.Application.Commands.Auth;
 using StackSift.Application.Commands.Billing;
 using StackSift.Application.Interfaces;
@@ -18,6 +19,7 @@ using StackSift.Domain.Interfaces;
 using StackSift.Domain.Interfaces.Repositories;
 using StackSift.Infrastructure.Abuse;
 using StackSift.Infrastructure.Ai;
+using StackSift.Infrastructure.FeatureFlags;
 using StackSift.Infrastructure.Ai.Abstractions;
 using StackSift.Infrastructure.Audit;
 using StackSift.Infrastructure.Captcha;
@@ -90,6 +92,30 @@ public static class ServiceCollectionExtensions
             .ValidateOnStart();
         services.AddSingleton<IApiKeyHasher, HmacApiKeyHasher>();
         services.AddScoped<IAuditLog, PostgresAuditLog>();
+
+        // ── Feature flags (Unleash, FS-6) ─────────────────────────────────
+        // Authoritative gate lives in the handlers via IFeatureFlagService. The
+        // Unleash client is only wired when both URL + client token are set
+        // (compose/prod); otherwise the adapter fails open to defaults, so local
+        // runs and unit tests need no flag server. DefaultUnleash polls in the
+        // background — construction never blocks startup if Unleash is down.
+        var unleashUrl = configuration["Unleash:Url"];
+        var unleashToken = configuration["Unleash:ClientToken"];
+        if (!string.IsNullOrWhiteSpace(unleashUrl) && !string.IsNullOrWhiteSpace(unleashToken))
+        {
+            services.AddSingleton<IUnleash>(_ => new DefaultUnleash(new UnleashSettings
+            {
+                AppName = "stacksift-api",
+                UnleashApi = new Uri(unleashUrl),
+                CustomHttpHeaders = new Dictionary<string, string> { ["Authorization"] = unleashToken },
+            }));
+            services.AddSingleton<IFeatureFlagService>(sp =>
+                new UnleashFeatureFlagService(sp.GetRequiredService<IUnleash>()));
+        }
+        else
+        {
+            services.AddSingleton<IFeatureFlagService>(new UnleashFeatureFlagService(null));
+        }
 
         // ── Abuse protection (Plan 08 §13) ────────────────────────────────
         services.Configure<CaptchaOptions>(configuration.GetSection("Captcha"));

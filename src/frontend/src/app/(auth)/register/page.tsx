@@ -8,6 +8,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, Input } from '@/app/components/ui';
 import { useToastStore } from '@/app/hooks/useToastStore';
+import { trackEvent, AnalyticsEvent } from '@/app/lib/analytics';
 import {
   registerApiResultSchema,
   registerSchema,
@@ -118,6 +119,12 @@ function RegisterForm() {
         return;
       }
       const result = parsed.data;
+
+      // Acquisition: the account now exists (fires for both the verify-email
+      // and the auto-login branches below). No PII in params.
+      trackEvent(AnalyticsEvent.SignUp, {
+        attached_via_invitation: result.attachedViaInvitation,
+      });
 
       // Unverified accounts cannot complete a login (realm policy), so don't
       // attempt the auto sign-in — route to the verification screen instead,

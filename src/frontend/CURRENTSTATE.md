@@ -1,6 +1,6 @@
 # Frontend — Current State
 
-> **Last updated:** 2026-05-31 (Docker end-to-end integration)
+> **Last updated:** 2026-06-10 (Feature flags — Unleash, FS-6 / M5.6)
 > **Sprint:** Post-Sprint-5 — billing, log-source UX, settings, and GDPR account screens landed; now Docker-native.
 > **Health:** Tests green (87+ suites at CORE-FUNC, since extended by billing/log-source/settings work). Production build green; lint clean (2 pre-existing TanStack Table warnings). The dashboard now runs **composed in Docker** behind the BFF (see the Docker-integration note under Environment Variables).
 >
@@ -19,6 +19,9 @@
 | FE-05 | Next.js App Router route structure — 27 files, 2 route groups `(auth)` / `(dashboard)` | ✅ Done |
 | FE-06 | State management — TanStack Query v5 + Zustand stores + mock data + query hooks | ✅ Done |
 | FE-08 | Performance baseline — Lighthouse, bundle analysis, code splitting | ✅ Done |
+| PM-6 | Product analytics (GA4) — `<GoogleAnalytics>` gated on measurement ID; `trackEvent` wrapper; 9 AARRR events; North Star + funnel in `docs/product-metrics.md` | ✅ (2026-06-10) |
+| FS-5 | Lighthouse CI — `@lhci/cli` + `lighthouserc.json` + `lighthouse` CI job; audits public `(auth)` routes, a11y/best-practices gate as `error ≥0.90` | ✅ (2026-06-10) |
+| FS-6 | Feature flags (Unleash) — `useFeatureFlag('ai-analysis')` (via BFF `GET /api/v1/features`, ~20s refetch) hides the "Analyze with AI" button when off; backend is the authoritative 403 gate. See `docs/feature-flags.md` | ✅ (2026-06-10) |
 | US-01 | Google SSO auth via BFF pattern (Keycloak PKCE, HTTP-only session cookies) | ✅ Done |
 | US-02 | Sign-out (Zustand clear → TanStack Query clear → Keycloak logout) | ✅ Done |
 | US-03 | Onboarding — Create Organisation multi-step form | ✅ Done |
@@ -81,6 +84,7 @@
 | `src/app/(dashboard)/projects/[id]/_components/ProjectDetailView.tsx` | Client component — project header + log sources list |
 | `src/app/lib/mock-data.ts` | All mock data used by query hooks while backend doesn't exist |
 | `src/app/lib/signalr-config.ts` | Hub URL (`NEXT_PUBLIC_SIGNALR_HUB_URL`), method name constants |
+| `src/app/lib/analytics.ts` | GA4 wrapper — `trackEvent(AnalyticsEvent.X, params)` + `AnalyticsEvent` names; no-ops unless `NEXT_PUBLIC_GA_MEASUREMENT_ID` is set. AARRR map in `docs/product-metrics.md` |
 | `src/app/lib/signalr-mock.ts` | Mock hub that emits random LogEntry/Alert events every 2–5s |
 | `src/app/lib/auth/config.ts` | Keycloak URLs, realm, client_id, cookie names |
 | `src/app/lib/auth/session.ts` | Session cookie read/write helpers |
@@ -105,6 +109,7 @@
 | `src/app/hooks/mutations/use-trigger-ai-analysis.ts` | POST `/api/v1/incidents/{id}/analyze` → 202; seeds the aiAnalyses cache and 429s into a plan-cap warning toast |
 | `src/app/components/providers/AuthGuard.tsx` | Redirects unauthenticated users to `/landing?next=...` (NUF-3) |
 | `src/app/components/providers/OrgGuard.tsx` | NUF-4 — Four-state matrix: has-org passes through (or bounces off `/onboarding` and `/waiting`); owner-no-org → `/onboarding`; non-owner-no-org → `/waiting`. Reads `useAuthStore.user`. |
+| `lighthouserc.json` | FS-5 — lhci config. Audits public `(auth)` routes (`/landing`, `/login`, `/register`); a11y/best-practices `error ≥0.90`, perf/SEO `warn`; `--no-sandbox` for root/self-hosted runners. Driven by the `lighthouse` job in `.github/workflows/ci.yml`. |
 
 ---
 
@@ -167,6 +172,7 @@ AiAnalysisStatus:    pending | processing | completed | failed
 | `NEXT_PUBLIC_AUTH_MOCK_NEW_USER` | Mock login returns user with no org | `false` |
 | `NEXT_PUBLIC_SIGNALR_MOCK` | Use fake SignalR hub | `true` |
 | `NEXT_PUBLIC_SIGNALR_HUB_URL` | Real hub URL | `http://localhost:5190/hubs/stacksift` |
+| `NEXT_PUBLIC_GA_MEASUREMENT_ID` | GA4 measurement ID (`G-XXXXXXXXXX`), **baked at build**; absent → GA no-ops | _(unset)_ |
 | `BACKEND_URL` | **Server-side** API base for BFF proxy hops (register / accept-invitation / onboarding-create-org) | `http://api:5190` (container-internal) |
 | `KEYCLOAK_INTERNAL_URL` | Server-side Keycloak base (BFF token/JWKS calls) | `http://keycloak:8080` |
 
@@ -193,8 +199,8 @@ AiAnalysisStatus:    pending | processing | completed | failed
 - [x] **Settings** — tabbed sub-routes: organization, members, api, billing, account/data (GDPR export)
 - [x] **Billing** — `/billing/checkout` + `/settings/billing` (Stripe checkout + portal), `useUpgradePlan`/`useBillingPortal`/`useSubscription`
 - [x] **Log-source UX** — `/log-sources/[id]` integration view (key reveal/regenerate/delete, test-ingest)
-- [~] **Playwright e2e tests** — 5 specs present (a11y, dark-mode, dashboard, navigation, new-alert-rule), run in mock mode; no full real-stack journey yet
-- [ ] **Accessibility audit** — axe DevTools, M2.7 deliverable
+- [x] **Playwright e2e tests** — mock suite (default, `chromium` project) + **real-stack journey** (FE-7 / M2.6): `REAL_STACK=1` runs `e2e/real-stack/` (`auth.setup.ts` real-Keycloak login → `core-journey.spec.ts`: project → log source → ingest → /logs round-trip) against composed stack; `e2e-real.yml` (dispatch + nightly). Fixture via `scripts/seed-e2e.sh` (KC admin API user + app-DB org/user). See `docs/test-coverage.md` § Frontend E2E.
+- [ ] **Accessibility audit** — axe DevTools, M2.7 deliverable. Lighthouse CI now gates a11y `error ≥0.90` on public routes (FS-5); remaining known gap = brand-blue contrast on `Button`/links (deferred to its own PR).
 - [x] **Fix test runner** — resolved 2026-04-21 (`ee3e50d`); verified 2026-05-18 at 66 suites / 598 tests. Floor enforced via `jest.globalSetup.ts` (FS-01).
 
 ---
@@ -224,6 +230,10 @@ AiAnalysisStatus:    pending | processing | completed | failed
 - **`useIncidentAlerts` workaround:** incident DTOs carry only `alertIds: string[]`; this hook fetches `GET /api/v1/alerts?incidentId=...` as a workaround.
 - **AI Analysis polling:** `useAiAnalysis` polls every 5s while `status` is `pending` or `processing`; stops (returns `false`) when `completed` or `failed`.
 - **Tailwind v4 `@theme` aliases** must mirror the exact utility class names used in components — a missing alias causes silent no-color rendering
+- **Lighthouse CI audits public routes only.** `(dashboard)/layout.tsx` server-redirects to `/landing` without a session cookie, so lhci (which cold-loads URLs cookie-less) can only audit `/landing`, `/login`, `/register`. To audit dashboard routes you'd need a puppeteer login step to seed the mock session — intentionally not done.
+- **Real-stack e2e seeding is admin-API, not realm-import.** Keycloak realm import is **skipped when the `stacksift` realm already exists** (any dev volume that's seen a prior `up`), so users/passwords added to `stacksift-realm.json` don't land without a destructive `docker compose down -v`. `scripts/seed-e2e.sh` therefore provisions the e2e user via the Keycloak **admin API** (idempotent, bypasses the realm password policy, non-destructive) and seeds the matching app-DB rows with the user's **actual** KC id (`User.Id == Keycloak id`). The journey only runs under `REAL_STACK=1`; the default `pnpm test:e2e` is mock-only and unaffected.
+- **Known a11y debt (deferred):** primary `Button` (white on `#2b7fff` = 3.76:1) and `text-blue-500` links (4.46:1) fail WCAG AA contrast. Surfaced by the lhci gate; fixing means darkening the brand blue app-wide (own PR). The gate passes today because `/register` still scores 0.92 a11y after the two cheap fixes (`ToastContainer` `role="region"`, `(auth)` layout `#main-content` skip-link target).
+- **GA4 analytics no-ops without a measurement ID.** `trackEvent` (`lib/analytics.ts`) only calls gtag when `NEXT_PUBLIC_GA_MEASUREMENT_ID` is baked in (production images), so dev/test/jsdom fire nothing. Fire events via `trackEvent(AnalyticsEvent.X, params)` — never call `sendGAEvent`/`gtag` directly, and never put PII in params. `first_log_ingested` is a live 0→>0 dashboard approximation; `plan_upgraded` fires on `/billing/success` (completion), `checkout_started` in `useUpgradePlan` (initiation). Consent-mode banner is a documented follow-up (`docs/pii-inventory.md`). Property creation + live Realtime/DebugView verification is a manual step (needs a Google account).
 
 ### NUF-3 (in-app login + register)
 

@@ -20,6 +20,8 @@ volumes:
   loki_data:
   minio_data:
   tempo_data:
+  n8n_data:
+  unleash_db_data:
 
 services:
 
@@ -314,6 +316,42 @@ services:
       - stacksift-net
 
   # ──────────────────────────────────────────────
+  # AUTOMATION — n8n (webhook → LLM → Slack)
+  # FS-8 webhook→LLM→notification pipeline; doubles as the DO-12 AIOps
+  # alert auto-triage receiver (Alertmanager → n8n → OpenAI → Slack).
+  # Workflow lives in ./n8n/workflows/alert-triage.json (version-controlled).
+  # ──────────────────────────────────────────────
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:1.70.0
+    container_name: stacksift-n8n
+    restart: unless-stopped
+    environment:
+      N8N_HOST: localhost
+      N8N_PORT: "5678"
+      N8N_PROTOCOL: http
+      WEBHOOK_URL: http://localhost:5678/
+      N8N_BASIC_AUTH_ACTIVE: "true"
+      N8N_BASIC_AUTH_USER: ${N8N_USER:-admin}
+      N8N_BASIC_AUTH_PASSWORD: ${N8N_PASSWORD:-admin_secret}
+      GENERIC_TIMEZONE: Europe/Belgrade
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_RUNNERS_ENABLED: "true"
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n/workflows:/workflows:ro
+    networks:
+      - stacksift-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:5678/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  # ──────────────────────────────────────────────
   # OBJECT STORAGE — MinIO (S3-compatible)
   # API: 9000, Console UI: 9001
   # ──────────────────────────────────────────────
@@ -546,6 +584,10 @@ services:
       Keycloak__Admin__RealmUrl: http://keycloak:8080/realms/stacksift
       Keycloak__Admin__AdminBaseUrl: http://keycloak:8080/admin/realms/stacksift
       Keycloak__Admin__AdminClientId: stacksift-backend-admin
+      # Feature flags (Unleash). Server SDK → /api/; client token is read-only.
+      # Absent → the API fails open (feature stays on). See docs/feature-flags.md.
+      Unleash__Url: http://unleash:4242/api/
+      Unleash__ClientToken: ${UNLEASH_CLIENT_TOKEN:-default:development.unleash-insecure-client-token}
     depends_on:
       postgres:
         condition: service_healthy
@@ -590,6 +632,9 @@ services:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:5190}
         NEXT_PUBLIC_AUTH_MOCK: "false"
         NEXT_PUBLIC_SIGNALR_MOCK: "false"
+        # GA4 analytics — unset locally → GA no-ops. Set NEXT_PUBLIC_GA_MEASUREMENT_ID
+        # in .env to bake it into a local production image.
+        NEXT_PUBLIC_GA_MEASUREMENT_ID: ${NEXT_PUBLIC_GA_MEASUREMENT_ID:-}
     env_file:
       - path: ../../.env.local
         required: false
@@ -642,4 +687,53 @@ services:
       interval: 15s
       timeout: 3s
       start_period: 15s
+      retries: 5
+
+  # ──────────────────────────────────────────────
+  # FEATURE FLAGS — Unleash (FS-6) + its own Postgres
+  # The ai-analysis kill-switch. INIT_*_API_TOKENS pre-seed SDK tokens so a
+  # fresh boot works with no manual clicks. Admin UI: http://localhost:4242
+  # (admin / unleash4all). Create the `ai-analysis` flag, enabled in `development`.
+  # ──────────────────────────────────────────────
+  unleash-db:
+    image: postgres:16-alpine
+    container_name: stacksift-unleash-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: unleash
+      POSTGRES_PASSWORD: ${UNLEASH_DB_PASSWORD:-unleash_secret}
+      POSTGRES_DB: unleash
+    volumes:
+      - unleash_db_data:/var/lib/postgresql/data
+    networks:
+      - stacksift-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U unleash"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  unleash:
+    image: unleashorg/unleash-server:6.6
+    container_name: stacksift-unleash
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://unleash:${UNLEASH_DB_PASSWORD:-unleash_secret}@unleash-db:5432/unleash
+      DATABASE_SSL: "false"
+      INIT_FRONTEND_API_TOKENS: ${UNLEASH_FRONTEND_TOKEN:-default:development.unleash-insecure-frontend-token}
+      INIT_CLIENT_API_TOKENS: ${UNLEASH_CLIENT_TOKEN:-default:development.unleash-insecure-client-token}
+      INIT_ADMIN_API_TOKENS: ${UNLEASH_ADMIN_TOKEN:-*:*.unleash-insecure-admin-token}
+      CHECK_VERSION: "false"
+    ports:
+      - "4242:4242"
+    depends_on:
+      unleash-db:
+        condition: service_healthy
+    networks:
+      - stacksift-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4242/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      start_period: 20s
       retries: 5

@@ -5,6 +5,7 @@ import { HubConnectionState } from '@microsoft/signalr';
 import type { LogEntry } from '@/app/types';
 import type { IHubConnection } from '@/app/lib/signalr-mock';
 import { HUB_METHOD_LOG_ENTRY, SIGNALR_HUB_URL } from '@/app/lib/signalr-config';
+import { parseLiveLogEntry } from '@/app/lib/live-events';
 import { useSignalR } from '@/app/hooks/useSignalR';
 import { useSignalRConnectionFromContext } from '@/app/hooks/useSignalRConnectionContext';
 
@@ -66,11 +67,17 @@ export function useLiveLogStream(
   const isPausedRef = useRef(false);
 
   useEffect(() => {
-    const handler = (entry: LogEntry) => {
+    const handler = (raw: unknown) => {
+      const entry = parseLiveLogEntry(raw);
+      if (!entry) return;
+      // Dedupe by id: a redelivered batch re-broadcasts the same entry IDs.
       if (isPausedRef.current) {
-        setBuffer((prev) => [...prev, entry]);
+        setBuffer((prev) =>
+          prev.some((e) => e.id === entry.id) ? prev : [...prev, entry],
+        );
       } else {
         setEntries((prev) => {
+          if (prev.some((e) => e.id === entry.id)) return prev;
           const next = [...prev, entry];
           // Cap to MAX_LOG_ENTRIES; trim oldest first.
           return next.length > MAX_LOG_ENTRIES
@@ -96,7 +103,8 @@ export function useLiveLogStream(
     setIsPaused(false);
     // Flush buffered entries into the visible list, respecting the cap.
     setEntries((prev) => {
-      const combined = [...prev, ...buffer];
+      const seen = new Set(prev.map((e) => e.id));
+      const combined = [...prev, ...buffer.filter((e) => !seen.has(e.id))];
       return combined.length > MAX_LOG_ENTRIES
         ? combined.slice(combined.length - MAX_LOG_ENTRIES)
         : combined;

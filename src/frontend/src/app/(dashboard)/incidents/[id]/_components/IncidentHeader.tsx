@@ -1,8 +1,11 @@
 'use client';
 
+import { useState } from 'react';
+import { Check, Link2 } from 'lucide-react';
 import { Badge } from '@/app/components/ui/Badge';
 import type { BadgeProps } from '@/app/components/ui/Badge';
 import { cn } from '@/app/lib/utils';
+import { trackEvent, AnalyticsEvent } from '@/app/lib/analytics';
 import type { AlertSeverity, Incident, IncidentStatus } from '@/app/types';
 
 // ---------------------------------------------------------------------------
@@ -60,6 +63,44 @@ function ActionButton({ label, onClick, disabled, isPending, variant = 'primary'
 }
 
 // ---------------------------------------------------------------------------
+// Copy-link (Referral) — copies the incident URL and fires incident_link_shared
+// ---------------------------------------------------------------------------
+
+function CopyLinkButton({ incidentId }: { incidentId: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setCopied(true);
+      trackEvent(AnalyticsEvent.IncidentLinkShared, { incident_id: incidentId });
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard unavailable (insecure context / permission denied) — no-op.
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      aria-label="Copy a shareable link to this incident"
+      className={cn(
+        'ml-auto inline-flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1',
+        'text-xs font-medium text-muted transition-colors hover:text-primary',
+      )}
+    >
+      {copied ? (
+        <Check className="h-3.5 w-3.5" aria-hidden="true" />
+      ) : (
+        <Link2 className="h-3.5 w-3.5" aria-hidden="true" />
+      )}
+      {copied ? 'Copied!' : 'Copy link'}
+    </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // IncidentHeader
 // ---------------------------------------------------------------------------
 
@@ -101,6 +142,7 @@ export function IncidentHeader({ incident, onUpdateStatus, isUpdating }: Inciden
             · Resolved {formatDate(incident.resolvedAt)}
           </span>
         )}
+        <CopyLinkButton incidentId={incident.id} />
       </div>
 
       {/* Title */}

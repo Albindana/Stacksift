@@ -1,0 +1,125 @@
+{{- if .Values.n8n.enabled }}
+{{/* n8n — AIOps alert receiver. The alert-triage workflow JSON ships in this
+     ConfigMap (mirrors infrastructure/docker/n8n/workflows/alert-triage.json);
+     an initContainer imports + activates it on first boot only (idempotent —
+     skipped if already present). The webhook is reached intra-namespace at
+     http://n8n:5678/webhook/alert-triage. */}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: n8n-workflows
+  labels: {{- include "stacksift.labels" . | nindent 4 }}
+data:
+  alert-triage.json: |-
+{{ .Files.Get "files/n8n/alert-triage.json" | indent 4 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: n8n
+  labels: {{- include "stacksift.labels" . | nindent 4 }}
+spec:
+  selector: {{- include "stacksift.selector" (dict "ctx" . "component" "n8n") | nindent 4 }}
+  ports:
+    - { name: http, port: 5678, targetPort: 5678 }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: n8n
+  labels: {{- include "stacksift.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: {{- include "stacksift.selector" (dict "ctx" . "component" "n8n") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "stacksift.selector" (dict "ctx" . "component" "n8n") | nindent 8 }}
+    spec:
+      securityContext:
+        runAsUser: 1000
+        runAsNonRoot: true
+        fsGroup: 1000
+      initContainers:
+        - name: import-workflow
+          image: {{ .Values.n8n.image }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              if n8n list:workflow 2>/dev/null | grep -q '|alert-triage'; then
+                echo "alert-triage already present; skipping import"
+              else
+                n8n import:workflow --input=/workflows/alert-triage.json
+                n8n update:workflow --all --active=true
+              fi
+          volumeMounts:
+            - { name: data, mountPath: /home/node/.n8n }
+            - { name: workflows, mountPath: /workflows, readOnly: true }
+      containers:
+        - name: n8n
+          image: {{ .Values.n8n.image }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          env:
+            - { name: N8N_HOST, value: {{ .Values.hosts.n8n | quote }} }
+            - { name: N8N_PORT, value: "5678" }
+            - { name: N8N_PROTOCOL, value: "https" }
+            - { name: WEBHOOK_URL, value: "https://{{ .Values.hosts.n8n }}/" }
+            - { name: N8N_BASIC_AUTH_ACTIVE, value: "true" }
+            - { name: GENERIC_TIMEZONE, value: "Europe/Belgrade" }
+            - { name: N8N_DIAGNOSTICS_ENABLED, value: "false" }
+            - { name: N8N_RUNNERS_ENABLED, value: "true" }
+            - { name: N8N_BASIC_AUTH_USER,     valueFrom: { secretKeyRef: { name: {{ .Values.n8n.secretName }}, key: N8N_BASIC_AUTH_USER } } }
+            - { name: N8N_BASIC_AUTH_PASSWORD, valueFrom: { secretKeyRef: { name: {{ .Values.n8n.secretName }}, key: N8N_BASIC_AUTH_PASSWORD } } }
+            - { name: OPENAI_API_KEY,          valueFrom: { secretKeyRef: { name: {{ .Values.n8n.secretName }}, key: OPENAI_API_KEY } } }
+            - { name: SLACK_WEBHOOK_URL,       valueFrom: { secretKeyRef: { name: {{ .Values.n8n.secretName }}, key: SLACK_WEBHOOK_URL } } }
+          ports:
+            - { name: http, containerPort: 5678 }
+          readinessProbe:
+            httpGet: { path: /healthz, port: 5678 }
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources: {{- toYaml .Values.n8n.resources | nindent 12 }}
+          volumeMounts:
+            - { name: data, mountPath: /home/node/.n8n }
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: n8n-data }
+        - name: workflows
+          configMap: { name: n8n-workflows }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: n8n-data
+  labels: {{- include "stacksift.labels" . | nindent 4 }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: {{ .Values.n8n.storageClass }}
+  resources: { requests: { storage: {{ .Values.n8n.storage }} } }
+{{- if .Values.n8n.ingress.enabled }}
+---
+{{/* Editor UI only (basic-auth). The webhook stays on the in-namespace Service. */}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: n8n
+  labels: {{- include "stacksift.labels" . | nindent 4 }}
+  annotations:
+    {{ include "stacksift.certAnnoKey" . }}: {{ include "stacksift.certIssuerName" . }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  tls:
+    - hosts: [{{ .Values.hosts.n8n | quote }}]
+      secretName: n8n-tls
+  rules:
+    - host: {{ .Values.hosts.n8n }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend: { service: { name: n8n, port: { number: 5678 } } }
+{{- end }}
+{{- end }}

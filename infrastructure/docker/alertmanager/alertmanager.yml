@@ -11,5 +11,5 @@ route:
 receivers:
   - name: webhook
     webhook_configs:
-      - url: http://host.docker.internal:9099/alertmanager
+      - url: http://n8n:5678/webhook/alert-triage
         send_resolved: true

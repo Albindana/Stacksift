@@ -1,0 +1,162 @@
+{{- if .Values.unleash.enabled }}
+{{/* Feature flags — Unleash (FS-6) + its own Postgres.
+
+     The .NET API reads flags in-namespace at http://unleash:4242/api/ (server
+     SDK, Unleash__ClientToken). The browser does NOT talk to Unleash — flags
+     reach the SPA through the BFF (GET /api/v1/features) — so the Ingress below
+     is ONLY the human admin UI and is optional.
+
+     ⚠ The admin UI ships the well-known default login admin/unleash4all. When
+     exposed via Ingress, CHANGE THE PASSWORD on first login (it's a public URL).
+
+     Prereq Secret ({{ .Values.unleash.secretName }}) keys:
+       DATABASE_PASSWORD        — shared by unleash-db (POSTGRES_PASSWORD) + unleash
+       INIT_CLIENT_API_TOKENS   — seeded client token; MUST equal the app secret's
+                                  Unleash__ClientToken (what the API authenticates with)
+       INIT_ADMIN_API_TOKENS    — admin API token (automation; not the UI login) */}}
+
+# ── Unleash Postgres ──────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: unleash-db
+  labels: {{- include "stacksift.labels" . | nindent 4 }}
+spec:
+  selector: {{- include "stacksift.selector" (dict "ctx" . "component" "unleash-db") | nindent 4 }}
+  ports:
+    - { name: postgres, port: 5432, targetPort: 5432 }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: unleash-db
+  labels: {{- include "stacksift.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: {{- include "stacksift.selector" (dict "ctx" . "component" "unleash-db") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "stacksift.selector" (dict "ctx" . "component" "unleash-db") | nindent 8 }}
+    spec:
+      securityContext:
+        runAsUser: 999
+        runAsNonRoot: true
+        fsGroup: 999
+      containers:
+        - name: postgres
+          image: {{ .Values.unleash.dbImage }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          env:
+            - { name: POSTGRES_USER, value: unleash }
+            - { name: POSTGRES_DB, value: unleash }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ .Values.unleash.secretName }}, key: DATABASE_PASSWORD } }
+            - { name: PGDATA, value: /var/lib/postgresql/data/pgdata }
+          ports:
+            - { name: postgres, containerPort: 5432 }
+          readinessProbe:
+            exec: { command: ["sh", "-c", "pg_isready -U unleash"] }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources: {{- toYaml .Values.unleash.db.resources | nindent 12 }}
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: unleash-db }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: unleash-db
+  labels: {{- include "stacksift.labels" . | nindent 4 }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: {{ .Values.unleash.storageClass }}
+  resources: { requests: { storage: {{ .Values.unleash.db.storage }} } }
+---
+# ── Unleash server ────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: unleash
+  labels: {{- include "stacksift.labels" . | nindent 4 }}
+spec:
+  selector: {{- include "stacksift.selector" (dict "ctx" . "component" "unleash") | nindent 4 }}
+  ports:
+    - { name: http, port: 4242, targetPort: 4242 }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: unleash
+  labels: {{- include "stacksift.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: {{- include "stacksift.selector" (dict "ctx" . "component" "unleash") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "stacksift.selector" (dict "ctx" . "component" "unleash") | nindent 8 }}
+    spec:
+      securityContext:
+        # The unleash image's USER is the name `node` (uid 1000); a numeric
+        # runAsUser is required or runAsNonRoot can't verify it → CreateContainerConfigError.
+        runAsUser: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        fsGroup: 1000
+      containers:
+        - name: unleash
+          image: {{ .Values.unleash.image }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          env:
+            # Discrete DB settings (keeps the password out of a URL string).
+            - { name: DATABASE_HOST, value: unleash-db }
+            - { name: DATABASE_PORT, value: "5432" }
+            - { name: DATABASE_NAME, value: unleash }
+            - { name: DATABASE_USERNAME, value: unleash }
+            - { name: DATABASE_SSL, value: "false" }
+            - name: DATABASE_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ .Values.unleash.secretName }}, key: DATABASE_PASSWORD } }
+            # Pre-seed SDK tokens so the API works on a fresh boot (no manual clicks).
+            - name: INIT_CLIENT_API_TOKENS
+              valueFrom: { secretKeyRef: { name: {{ .Values.unleash.secretName }}, key: INIT_CLIENT_API_TOKENS } }
+            - name: INIT_ADMIN_API_TOKENS
+              valueFrom: { secretKeyRef: { name: {{ .Values.unleash.secretName }}, key: INIT_ADMIN_API_TOKENS } }
+            - { name: CHECK_VERSION, value: "false" }
+          ports:
+            - { name: http, containerPort: 4242 }
+          readinessProbe:
+            httpGet: { path: /health, port: 4242 }
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          resources: {{- toYaml .Values.unleash.resources | nindent 12 }}
+{{- if .Values.unleash.ingress.enabled }}
+---
+{{/* Admin UI only. The API reaches Unleash via the in-namespace Service.
+     Default login admin/unleash4all — change it on first login (public URL). */}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: unleash
+  labels: {{- include "stacksift.labels" . | nindent 4 }}
+  annotations:
+    {{ include "stacksift.certAnnoKey" . }}: {{ include "stacksift.certIssuerName" . }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  tls:
+    - hosts: [{{ .Values.hosts.unleash | quote }}]
+      secretName: unleash-tls
+  rules:
+    - host: {{ .Values.hosts.unleash }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend: { service: { name: unleash, port: { number: 4242 } } }
+{{- end }}
+{{- end }}

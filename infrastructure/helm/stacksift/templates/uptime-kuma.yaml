@@ -1,0 +1,89 @@
+{{- if .Values.uptimeKuma.enabled }}
+{{/* Uptime Kuma (DO-7 / M4.6) — status page + monitors. State is SQLite in the
+     PVC (no separate DB). Config (monitors/notifications/status page) is applied
+     post-deploy by scripts/bootstrap-uptime-kuma.py — see docs/uptime-kuma-bootstrap.md.
+
+     Runs as ROOT: the image entrypoint chowns /app/data on boot, so a non-root
+     user exits with "chown: Operation not permitted". If the namespace enforces
+     the *restricted* Pod Security Standard, grant this workload an exception
+     (baseline/privileged) — Kuma's official image requires root.
+
+     NOTE (plan caveat): an in-cluster monitor can't alert when the cluster/ingress
+     itself is down. Pair it with an external checker for true outage insurance. */}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: uptime-kuma
+  labels: {{- include "stacksift.labels" . | nindent 4 }}
+spec:
+  selector: {{- include "stacksift.selector" (dict "ctx" . "component" "uptime-kuma") | nindent 4 }}
+  ports:
+    - { name: http, port: 3001, targetPort: 3001 }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: uptime-kuma
+  labels: {{- include "stacksift.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: {{- include "stacksift.selector" (dict "ctx" . "component" "uptime-kuma") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "stacksift.selector" (dict "ctx" . "component" "uptime-kuma") | nindent 8 }}
+    spec:
+      containers:
+        - name: uptime-kuma
+          image: {{ .Values.uptimeKuma.image }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          ports:
+            - { name: http, containerPort: 3001 }
+          readinessProbe:
+            tcpSocket: { port: 3001 }
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          resources: {{- toYaml .Values.uptimeKuma.resources | nindent 12 }}
+          volumeMounts:
+            - { name: data, mountPath: /app/data }
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: uptime-kuma }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: uptime-kuma
+  labels: {{- include "stacksift.labels" . | nindent 4 }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: {{ .Values.uptimeKuma.storageClass }}
+  resources: { requests: { storage: {{ .Values.uptimeKuma.storage }} } }
+{{- if .Values.uptimeKuma.ingress.enabled }}
+---
+{{/* Serves the public status page (/status/<slug>) AND the admin UI (/).
+     Kuma uses socket.io (WebSocket) — the proxy timeouts keep that alive. */}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: uptime-kuma
+  labels: {{- include "stacksift.labels" . | nindent 4 }}
+  annotations:
+    {{ include "stacksift.certAnnoKey" . }}: {{ include "stacksift.certIssuerName" . }}
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  tls:
+    - hosts: [{{ .Values.hosts.uptime | quote }}]
+      secretName: uptime-kuma-tls
+  rules:
+    - host: {{ .Values.hosts.uptime }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend: { service: { name: uptime-kuma, port: { number: 3001 } } }
+{{- end }}
+{{- end }}

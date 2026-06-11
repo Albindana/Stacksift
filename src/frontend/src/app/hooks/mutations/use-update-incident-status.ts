@@ -7,6 +7,7 @@ import { IncidentSchema } from '@/app/lib/api-schemas';
 import { queryKeys } from '@/app/lib/query-keys';
 import { useApiError } from '@/app/hooks/useApiError';
 import { useToastStore } from '@/app/hooks/useToastStore';
+import { trackEvent, AnalyticsEvent } from '@/app/lib/analytics';
 import type { Incident, IncidentStatus } from '@/app/types';
 
 // ---------------------------------------------------------------------------
@@ -75,7 +76,10 @@ export function useUpdateIncidentStatus() {
       handleError(err);
     },
 
-    onSuccess: (_data, { status }) => {
+    onSuccess: (_data, { incidentId, status }) => {
+      if (status === 'resolved') {
+        trackEvent(AnalyticsEvent.IncidentResolved, { incident_id: incidentId });
+      }
       addToast({
         variant: 'success',
         message: `Incident marked as ${status}.`,

@@ -24,8 +24,8 @@ const LEVEL_VARIANT: Record<LogLevel, BadgeProps['variant']> = {
 // Timestamp helpers
 // ---------------------------------------------------------------------------
 
-function relativeTime(iso: string): string {
-  const diffMs = Date.now() - new Date(iso).getTime();
+function relativeTime(iso: string, now: number): string {
+  const diffMs = now - new Date(iso).getTime();
   const secs = Math.floor(diffMs / 1_000);
   if (secs < 60) return `${secs}s ago`;
   const mins = Math.floor(secs / 60);
@@ -52,10 +52,12 @@ function absoluteTime(iso: string): string {
 
 export interface LogTableRowProps {
   entry: LogEntry;
+  /** Epoch ms driving the relative timestamp — supplied by the table's useNow tick. */
+  now: number;
   style?: React.CSSProperties;
 }
 
-export function LogTableRow({ entry, style }: LogTableRowProps) {
+export function LogTableRow({ entry, now, style }: LogTableRowProps) {
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -93,7 +95,7 @@ export function LogTableRow({ entry, style }: LogTableRowProps) {
         title={absoluteTime(entry.timestamp)}
         className="shrink-0 text-zinc-500 tabular-nums w-16 select-none"
       >
-        {relativeTime(entry.timestamp)}
+        {relativeTime(entry.timestamp, now)}
       </time>
 
       {/* Level badge */}

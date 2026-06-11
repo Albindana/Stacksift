@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import { GoogleAnalytics } from "@next/third-parties/google";
 import { Providers } from "@/app/components/providers/Providers";
 import { ToastContainer } from "@/app/components/ui/Toast";
 
@@ -101,6 +102,11 @@ export default function RootLayout({
         <Providers>{children}</Providers>
         <ToastContainer />
       </body>
+      {/* GA4 — only loads gtag.js when a measurement ID is baked into the build
+          (production images via NEXT_PUBLIC_GA_MEASUREMENT_ID); absent → no-op. */}
+      {process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID && (
+        <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID} />
+      )}
     </html>
   );
 }

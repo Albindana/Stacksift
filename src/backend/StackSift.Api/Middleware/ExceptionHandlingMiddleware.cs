@@ -66,6 +66,8 @@ public sealed class ExceptionHandlingMiddleware(
 
             PlanLimitExceededException pe => (StatusCodes.Status402PaymentRequired, "Plan Limit Exceeded", pe.Message, null),
 
+            FeatureDisabledException fd => (StatusCodes.Status403Forbidden, "Feature Disabled", fd.Message, null),
+
             _ => (StatusCodes.Status500InternalServerError, "Internal Server Error",
                 env.IsDevelopment() ? ex.Message : null, null),
         };

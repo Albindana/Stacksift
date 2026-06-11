@@ -73,7 +73,7 @@ export function FormStepper({
                   <div
                     aria-current={isActive ? 'step' : undefined}
                     className={cn(
-                      'flex h-8 w-8 items-center justify-center rounded-full border-2 text-sm font-semibold transition-colors',
+                      'flex h-7 w-7 items-center justify-center rounded-full border-2 text-sm font-semibold transition-colors sm:h-8 sm:w-8',
                       isCompleted &&
                         'border-blue-600 bg-blue-600 text-white',
                       isActive &&
@@ -105,7 +105,7 @@ export function FormStepper({
 
                   <span
                     className={cn(
-                      'text-xs font-medium text-center leading-tight max-w-[72px]',
+                      'text-xs font-medium text-center leading-tight max-w-[60px] sm:max-w-[72px]',
                       isActive ? 'text-blue-600' : 'text-zinc-500 dark:text-zinc-400',
                       isCompleted && 'text-zinc-700 dark:text-zinc-300',
                     )}
@@ -118,7 +118,7 @@ export function FormStepper({
                 {index < totalSteps - 1 && (
                   <div
                     className={cn(
-                      'mt-4 mx-2 h-0.5 flex-1 transition-colors',
+                      'mt-3.5 mx-2 h-0.5 flex-1 transition-colors sm:mt-4',
                       isCompleted ? 'bg-blue-600' : 'bg-zinc-200 dark:bg-zinc-700',
                     )}
                     aria-hidden="true"

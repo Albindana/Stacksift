@@ -11,4 +11,5 @@ public interface IUserRepository : IRepository<User, Guid>
     Task<IReadOnlyList<User>> GetAdminsByOrgIdAsync(Guid organizationId, CancellationToken ct = default);
     Task<int> CountOwnersAsync(Guid organizationId, CancellationToken ct = default);
     Task<int> CountActiveMembersAsync(Guid organizationId, CancellationToken ct = default);
+    Task<IReadOnlyList<User>> GetManyByIdAsync(IEnumerable<Guid> ids, CancellationToken ct = default);
 }

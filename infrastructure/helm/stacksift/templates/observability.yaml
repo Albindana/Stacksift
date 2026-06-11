@@ -58,6 +58,13 @@ spec:
   retention: {{ .Values.prometheus.retention | quote }}
   scrapeInterval: {{ .Values.prometheus.scrapeInterval | quote }}
   resources: {{- toYaml .Values.prometheus.resources | nindent 4 }}
+  {{- if .Values.alertmanager.enabled }}
+  alerting:
+    alertmanagers:
+      - namespace: {{ .Release.Namespace }}
+        name: alertmanager-operated
+        port: web
+  {{- end }}
   serviceMonitorSelector:
     matchLabels:
       app.kubernetes.io/name: stacksift
@@ -102,49 +109,5 @@ spec:
     - port: metrics
       interval: {{ .Values.prometheus.scrapeInterval | quote }}
 {{- end }}
----
-{{/* The 4 Gate-2 alerts, ported from infrastructure/docker/prometheus/rules/.
-     Exprs filter on job="stacksift-api" — the api ServiceMonitor relabels to
-     that. zhelpers/DEPLOY/08 + docs/runbooks/04-incident-response.md. */}}
-apiVersion: monitoring.coreos.com/v1
-kind: PrometheusRule
-metadata:
-  name: stacksift-gate2
-  labels: {{- include "stacksift.labels" . | nindent 4 }}
-spec:
-  groups:
-    - name: stacksift.gate2
-      rules:
-        - alert: ApiDown
-          expr: up{job="stacksift-api"} == 0
-          for: 2m
-          labels:
-            severity: critical
-          annotations:
-            summary: StackSift API is down
-            description: Prometheus cannot scrape the StackSift API.
-        - alert: HighErrorRate
-          expr: sum(rate(http_requests_received_total{job="stacksift-api",code=~"5.."}[5m])) / sum(rate(http_requests_received_total{job="stacksift-api"}[5m])) > 0.05
-          for: 10m
-          labels:
-            severity: warning
-          annotations:
-            summary: StackSift API 5xx rate is high
-            description: More than 5% of API requests are returning 5xx.
-        - alert: HighLatencyP99
-          expr: histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket{job="stacksift-api"}[5m]))) > 2
-          for: 10m
-          labels:
-            severity: warning
-          annotations:
-            summary: StackSift API p99 latency is high
-            description: API p99 latency exceeded 2 seconds for 10 minutes.
-        - alert: AIAnalysisStalled
-          expr: sum(rate(stacksift_ai_analyses_total[30m])) == 0
-          for: 1h
-          labels:
-            severity: warning
-          annotations:
-            summary: AI analysis appears stalled
-            description: No AI analyses completed or failed in the last hour.
+{{/* PrometheusRule (all 14 alerts) moved to templates/prometheusrule.yaml. */}}
 {{- end }}

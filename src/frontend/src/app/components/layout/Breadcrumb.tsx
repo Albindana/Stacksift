@@ -60,13 +60,13 @@ export function Breadcrumb() {
   const crumbs = buildCrumbs(pathname);
 
   return (
-    <nav aria-label="Breadcrumb" className="flex items-center">
-      <ol className="flex items-center gap-1">
+    <nav aria-label="Breadcrumb" className="flex min-w-0 items-center">
+      <ol className="flex min-w-0 items-center gap-1">
         {crumbs.map((crumb, index) => (
           <li
             key={crumb.href}
             className={cn(
-              'flex items-center gap-1',
+              'flex min-w-0 items-center gap-1',
               // On mobile: only show the last crumb (current page title)
               index < crumbs.length - 1 ? 'hidden md:flex' : 'flex',
             )}
@@ -81,7 +81,7 @@ export function Breadcrumb() {
             {crumb.isCurrent ? (
               <span
                 aria-current="page"
-                className="text-sm font-medium text-primary"
+                className="truncate text-sm font-medium text-primary"
               >
                 {crumb.label}
               </span>

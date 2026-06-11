@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { useSession } from '@/app/hooks/useSession';
 import { useSyncCheckoutSession } from '@/app/hooks/mutations/use-sync-checkout-session';
 import { Spinner } from '@/app/components/ui/Spinner';
+import { trackEvent, AnalyticsEvent } from '@/app/lib/analytics';
 
 function CheckoutSuccess() {
   const params = useSearchParams();
@@ -23,6 +24,17 @@ function CheckoutSuccess() {
     launchedRef.current = true;
     sync.mutate(sessionId);
   }, [sessionId, sessionLoading, isAuthenticated, sync]);
+
+  // Revenue: fire once the backend confirms the new subscription (a real
+  // completion, distinct from `checkout_started` which fires at initiation).
+  useEffect(() => {
+    if (sync.isSuccess) {
+      trackEvent(
+        AnalyticsEvent.PlanUpgraded,
+        sync.data?.plan ? { plan: sync.data.plan } : {},
+      );
+    }
+  }, [sync.isSuccess, sync.data?.plan]);
 
   // No session id means someone landed here outside the Stripe redirect flow —
   // show the dashboard handoff without trying to reconcile anything.

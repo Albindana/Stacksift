@@ -11,7 +11,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.*" />
+    <!-- Pinned (was 10.0.*): the .NET 10.0.9 servicing release published
+         Microsoft.Extensions.Hosting before its 10.0.9 dependencies, so the
+         float broke restore (NU1103). 10.0.8 is the last consistent release. -->
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.8" />
   </ItemGroup>
 
   <ItemGroup>
