@@ -67,10 +67,14 @@ ENV ASPNETCORE_URLS=http://+:5190 \
     DOTNET_CLI_TELEMETRY_OPTOUT=1 \
     DOTNET_NOLOGO=1
 
+# apk upgrade picks up OS security fixes published after the base image's
+# last rebuild (e.g. CVE-2026-45447 in openssl) — CI Trivy fails the build
+# on any fixed HIGH/CRITICAL, so an unpatched base is a broken build.
 # netcat-openbsd: entrypoint waits on Postgres readiness.
 # icu-libs:       Npgsql needs globalisation for case-insensitive collation.
 # tzdata:         deterministic timestamps in logs.
-RUN apk add --no-cache netcat-openbsd icu-libs tzdata \
+RUN apk upgrade --no-cache \
+ && apk add --no-cache netcat-openbsd icu-libs tzdata \
  && addgroup -S appuser \
  && adduser -S -G appuser -u 10001 appuser \
  && mkdir -p /app \
