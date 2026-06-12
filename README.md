@@ -322,6 +322,7 @@ Course duration: March 23 – June 12, 2026 · 7 milestones · 6 sprints
 
 ## 📄 Documentation
 
+- [Architecture Diagram](docs/architecture.md)
 - [AI Engineering Log](docs/ai-log.md)
 - [RAG Architecture & System Prompt v3](docs/ai-rag-architecture.md)
 - [SQL Optimisations](docs/sql-optimization.md)
