@@ -99,3 +99,7 @@ Domain has zero external dependencies; each outer layer may only import the laye
 
 > **Uptime Kuma** (:3002) ships as an optional Docker Compose profile and probes the `/api/v1/health` endpoint.
 > **Optional profiles:** Tempo (distributed tracing), Alertmanager, n8n (workflow automation), Unleash (feature flags).
+
+---
+
+For the full entity-relationship diagram and column details see [docs/database-schema.md](database-schema.md).
