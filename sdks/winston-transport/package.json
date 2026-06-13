@@ -1,6 +1,6 @@
 {
   "name": "@stacksift/winston-transport",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Winston transport that ships log events to StackSift's ingestion API. Buffers, batches, and retries with exponential backoff. Pre-1.0.",
   "license": "MIT",
   "type": "module",
