@@ -59,7 +59,7 @@
 | `/settings/organization` | `(dashboard)/settings/organization/page.tsx` | ✅ (2026-05-31) — org name/logo edit (`useUpdateOrganization`) |
 | `/settings/billing` | `(dashboard)/settings/billing/page.tsx` | ✅ (2026-05-31) — `BillingPanel`: plan, upgrade (`useUpgradePlan`), Stripe portal link |
 | `/settings/api` | `(dashboard)/settings/api/page.tsx` | ✅ (2026-05-31) — org-wide `LogSourcesTable` + key management |
-| `/settings/account/data` | `(dashboard)/settings/account/data/page.tsx` | ✅ (2026-05-31) — `AccountDataPanel`: GDPR export request (1/7-days) + status list |
+| `/settings/account/data` | `(dashboard)/settings/account/data/page.tsx` | ⏸️ Disabled (2026-06-14) — "Your data" GDPR export not functional yet; nav tab removed in `SettingsTabs`, route `redirect()`s to `/settings`. `AccountDataPanel` kept (unrendered) for re-enable. |
 | `/settings/members` | `(dashboard)/settings/members/page.tsx` | ✅ NUF-5 — owner-only screen; lists members, add-by-email dialog (member or invitation based on backend response), in-row role select, remove/Leave button. Last-owner guard disables non-owner roles + hides Remove for the sole owner. Non-owners see an inline "owners only" message; the sidebar tab is hidden too. |
 | `/accept-invitation` | `(auth)/accept-invitation/page.tsx` | ✅ NUF-5 — anonymous landing for the email-link path; reads `?token=`, RHF + Zod password + display name; POSTs `/api/auth/accept-invitation` → on 200 auto-logs in via ROPC → `/`; on 409 shows an inline "expired/used" banner. |
 
