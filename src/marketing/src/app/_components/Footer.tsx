@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 type Link = { label: string; href: string };
 type Column = { title: string; links: readonly Link[] };
 
@@ -65,7 +67,22 @@ export default function Footer() {
     <footer className="border-t border-line py-12 md:py-16">
       <div className="container-page grid grid-cols-2 md:grid-cols-5 gap-8">
         <div className="col-span-2 md:col-span-1">
-          <div className="text-lg font-bold">StackSift</div>
+          <div className="flex items-center gap-2">
+            <Image
+              src="/stacksifticon.png"
+              alt=""
+              width={40}
+              height={40}
+              className="h-9 w-auto shrink-0 rounded"
+            />
+            <Image
+              src="/namestacksifticon.png"
+              alt="StackSift"
+              width={120}
+              height={28}
+              className="h-5 w-auto shrink-0"
+            />
+          </div>
           <p className="mt-3 text-sm text-muted">
             AI-powered SRE & log-analysis platform.
           </p>
