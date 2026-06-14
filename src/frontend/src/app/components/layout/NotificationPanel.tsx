@@ -69,7 +69,11 @@ export function NotificationPanel({
       aria-label="Notifications"
       className={cn(
         'absolute right-0 top-full z-50 mt-2 flex flex-col',
-        'w-[min(360px,calc(100vw-24px))] overflow-hidden rounded-lg border border-line bg-surface shadow-xl',
+        // The panel is anchored right-0 to the bell button, which sits ~108px in
+        // from the viewport's right edge (connection dot + theme toggle + avatar +
+        // the header's px-4). Clamp the width against that anchor offset (+8px
+        // gutter) so the left edge can never run off the left side of the screen.
+        'w-[min(360px,calc(100vw-116px))] overflow-hidden rounded-lg border border-line bg-surface shadow-xl',
       )}
     >
       <div className="flex items-center justify-between border-b border-line px-4 py-2.5">

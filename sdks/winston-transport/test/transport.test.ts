@@ -194,6 +194,38 @@ describe('StackSiftTransport', () => {
     await t.close();
   });
 
+  it('close drains the entire backlog, not just the first batch', async () => {
+    // Hold the first HTTP request open so the rest of the events pile up in the
+    // queue (a multi-batch backlog) while one batch is in flight. Big capacity
+    // multiplier so nothing is dropped — every event must reach the wire.
+    let release: (() => void) | null = null;
+    const gate = new Promise<void>((r) => (release = r));
+    let gated = true;
+    state.responder = async () => {
+      if (gated) {
+        gated = false;
+        await gate;
+      }
+      return new Response(null, { status: 202 });
+    };
+
+    const t = makeTransport({ bufferSize: 5, queueCapacityMultiplier: 100 });
+
+    // 23 events = 5 batches. The first batch's POST blocks on the gate; the
+    // remaining 18 accumulate behind it (cap is 500, so no drops).
+    for (let i = 0; i < 23; i++) await logOne(t, { message: `e-${i}` });
+
+    release!();
+    await t.close();
+
+    const totalEntries = state.requests.reduce(
+      (n, r) => n + (r.body as { entries: unknown[] }).entries.length,
+      0,
+    );
+    expect(totalEntries).toBe(23);
+    expect(t.getDroppedCount()).toBe(0);
+  });
+
   it.each([
     ['silly', 'Trace'],
     ['verbose', 'Debug'],

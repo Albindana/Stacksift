@@ -263,21 +263,37 @@ function AddLogSourceDialog({
           required
         />
         <fieldset className="grid grid-cols-2 gap-2">
-          {(['application', 'server', 'database', 'network', 'custom'] as const).map((item) => (
-            <label
-              key={item}
-              className="flex items-center gap-2 rounded-md border border-zinc-200 px-3 py-2 text-sm dark:border-zinc-800"
-            >
-              <input
-                type="radio"
-                name="log-source-type"
-                value={item}
-                checked={type === item}
-                onChange={() => setType(item)}
-              />
-              <span className="capitalize">{item}</span>
-            </label>
-          ))}
+          <legend className="sr-only">Log source type</legend>
+          {(['application', 'server', 'database', 'network', 'custom'] as const).map((item) => {
+            // Only "Application" is available today; the rest are shown disabled as
+            // a roadmap preview of source types we plan to support.
+            const comingSoon = item !== 'application';
+            return (
+              <label
+                key={item}
+                title={comingSoon ? 'Coming soon' : undefined}
+                className={`flex items-center gap-2 rounded-md border border-zinc-200 px-3 py-2 text-sm dark:border-zinc-800 ${
+                  comingSoon ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="log-source-type"
+                  value={item}
+                  checked={type === item}
+                  disabled={comingSoon}
+                  onChange={() => setType(item)}
+                />
+                {LOG_SOURCE_ICONS[item]}
+                <span className="capitalize">{item}</span>
+                {comingSoon && (
+                  <span className="ml-auto rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted dark:bg-zinc-800">
+                    Soon
+                  </span>
+                )}
+              </label>
+            );
+          })}
         </fieldset>
         <div className="flex justify-end gap-2">
           <Button type="button" variant="secondary" onClick={onClose}>

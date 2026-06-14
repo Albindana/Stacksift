@@ -11,7 +11,7 @@ const TABS = [
   { href: '/settings/api', label: 'API' },
   { href: '/settings/members', label: 'Members' },
   { href: '/settings/billing', label: 'Billing' },
-  { href: '/settings/account/data', label: 'Your data' },
+  // "Your data" (GDPR export) is disabled until the export flow is functional.
   { href: '/settings/account/delete', label: 'Delete account' },
 ];
 

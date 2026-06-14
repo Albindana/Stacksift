@@ -42,7 +42,6 @@ function LoginContent() {
 
   const error = searchParams.get('error');
   const next = resolveNext(searchParams);
-  const ssoHref = `/api/auth/login${next !== '/' ? `?next=${encodeURIComponent(next)}` : ''}`;
 
   const [submitting, setSubmitting] = useState(false);
 
@@ -131,19 +130,6 @@ function LoginContent() {
       <Button type="submit" variant="primary" loading={submitting} className="w-full">
         Sign in
       </Button>
-
-      <div className="flex items-center gap-3 text-xs text-muted">
-        <div className="h-px flex-1 bg-line" aria-hidden />
-        or
-        <div className="h-px flex-1 bg-line" aria-hidden />
-      </div>
-
-      <a
-        href={`${ssoHref}${ssoHref.includes('?') ? '&' : '?'}provider=google`}
-        className="flex w-full items-center justify-center rounded-lg border border-line bg-elevated px-4 py-3 text-sm font-medium text-primary transition-colors hover:bg-line focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-      >
-        Continue with Google
-      </a>
 
       <p className="text-center text-xs text-muted">
         New here?{' '}

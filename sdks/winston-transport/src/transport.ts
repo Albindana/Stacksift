@@ -82,7 +82,7 @@ export class StackSiftTransport extends Transport {
     if (this.queue.length === 0) return;
 
     this.flushing = true;
-    this.pendingFlush = this.drainOnce().finally(() => {
+    this.pendingFlush = this.drainAll().finally(() => {
       this.flushing = false;
     });
     await this.pendingFlush;
@@ -96,6 +96,18 @@ export class StackSiftTransport extends Transport {
       this.flushTimer = null;
     }
     await this.flush();
+  }
+
+  // Drains every queued batch, not just one. `drainOnce` removes a single
+  // `bufferSize` slice; looping here is what lets `close()` (and each timer
+  // tick) flush the whole backlog instead of stranding everything past the
+  // first batch. Bounded: each `drainOnce` removes >= 1 event, new arrivals
+  // are capped by `queueCapacity`, and `close()` sets `disposed` before
+  // flushing so no new events enter the queue mid-drain.
+  private async drainAll(): Promise<void> {
+    while (this.queue.length > 0) {
+      await this.drainOnce();
+    }
   }
 
   private async drainOnce(): Promise<void> {

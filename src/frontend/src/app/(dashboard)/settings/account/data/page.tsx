@@ -1,8 +1,9 @@
-import type { Metadata } from 'next';
-import { AccountDataPanel } from '../../_components/AccountDataPanel';
+import { redirect } from 'next/navigation';
 
-export const metadata: Metadata = { title: 'Your data — Settings | StackSift' };
-
+// The "Your data" (GDPR export) section is disabled — the export flow isn't
+// functional yet. The nav tab is removed in SettingsTabs; this route bounces
+// direct/bookmarked navigations back to settings. Re-enable by restoring the
+// tab and rendering <AccountDataPanel /> here.
 export default function AccountDataPage() {
-  return <AccountDataPanel />;
+  redirect('/settings');
 }

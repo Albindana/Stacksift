@@ -39,13 +39,16 @@
 | Database | PostgreSQL 16 + pgvector |
 | Search | Elasticsearch 8.12 |
 | Cache | Redis |
-| Messaging | RabbitMQ (MassTransit 9) |
+| Messaging | RabbitMQ (MassTransit 8) |
 | Real-time | SignalR (Redis backplane) |
 | Background Jobs | Hangfire (PostgreSQL) |
 | Object Storage | MinIO (S3-compatible) |
 | AI | OpenAI (`gpt-4o-mini` + `text-embedding-3-small`) |
+| Payments | Stripe (checkout, customer portal, webhooks) |
+| Feature Flags | Unleash (server SDK; AI-analysis kill-switch) |
+| Abuse Prevention | Cloudflare Turnstile + disposable-email blocklist |
 | Email | MailKit + Polly retry |
-| Logging | Serilog → Loki + OpenTelemetry |
+| Logging | Serilog → Loki + OpenTelemetry → Tempo |
 | Testing | xUnit + Testcontainers (Postgres, Keycloak, Redis) |
 | Auth | Keycloak (OIDC/OAuth2) |
 
@@ -61,17 +64,20 @@
 | Animation | Framer Motion 11 |
 | Real-time | `@microsoft/signalr` 8 |
 | Validation | Zod (forms + API responses) |
+| Analytics | Google Analytics 4 (AARRR funnel) |
 | Testing | Jest + RTL + Playwright |
 | Workspace | pnpm |
 
 ### Infrastructure
 | Tool | Purpose |
 |------|---------|
-| Docker Compose | Local development orchestration (10 services) |
-| Kubernetes + Helm | Production deployment _(planned — M4)_ |
-| Terraform | Cloud IaC _(planned — M4)_ |
-| Prometheus + Grafana | Metrics & dashboards |
-| Loki | Log aggregation (Serilog HTTP sink) |
+| Docker Compose | Local development orchestration (~20 services) |
+| Kubernetes + Helm | Production deployment — live on namespace `project-07` (beta) |
+| Terraform | Keycloak realm-as-code (`infrastructure/terraform/keycloak`) |
+| Prometheus + Grafana | Metrics & dashboards (6 dashboards, 14 alert rules) |
+| Loki + Tempo | Log aggregation (Serilog HTTP sink) + distributed tracing (OTLP) |
+| n8n | Alert-triage automation (Alertmanager → OpenAI → Slack) |
+| Unleash | Feature flags (AI-analysis kill-switch) |
 | Uptime Kuma | Uptime monitoring |
 
 ---
@@ -80,27 +86,33 @@
 
 ```
 StackSift/
-├── docs/
-│   ├── ai-log.md                 # AI Engineering session log (42+ entries)
-│   ├── ai-rag-architecture.md    # RAG pipeline + system prompt v3
-│   ├── sql-optimization.md       # EXPLAIN ANALYZE deep-dive (BE-16)
-│   ├── swagger-enrichment.md     # BE-20 OpenAPI walkthrough
-│   ├── test-coverage.md          # Testcontainers strategy
-│   ├── loki-setup.md             # Loki query guide
+├── docs/                         # ~24 docs: architecture, ai-rag-architecture, payments,
+│   │                             #   retention, slo, observability-setup, feature-flags, …
+│   ├── ai-log.md                 # AI Engineering session log
+│   ├── integrate/                # Customer integration guides (ingest API, curl, SDK versioning)
+│   ├── security/                 # CSRF, DAST/ZAP, secret-scanning, pentest scope
+│   ├── runbooks/                 # First-deploy, incident-response, observability, backups
+│   ├── adr/                      # Architecture Decision Records
 │   └── milestones/               # Capstone deliverables
 ├── infrastructure/
-│   ├── docker/                   # Docker Compose configs (10 services)
-│   ├── keycloak/                 # Realm export (stacksift-realm.json)
-│   ├── k8s/                      # Helm charts & K8s manifests (M4)
-│   └── terraform/                # Cloud IaC (M4)
+│   ├── docker/                   # Docker Compose stack (~20 services) + hot-reload override
+│   ├── keycloak/                 # Dev realm seed (stacksift-realm.json)
+│   ├── helm/stacksift/           # Helm chart — deployed to namespace project-07
+│   ├── terraform/keycloak/       # Keycloak realm-as-code (production source of truth)
+│   ├── elasticsearch/, pgbackrest/, k8s/
 ├── src/
-│   ├── backend/                  # .NET 10 Clean Architecture solution
-│   ├── frontend/                 # Next.js 16+ App Router
+│   ├── backend/                  # .NET 10 Clean Architecture solution (+ Serilog sink + migrator)
+│   ├── frontend/                 # Next.js 16 App Router dashboard
+│   ├── marketing/                # Next.js 16 marketing site (:3200)
 │   └── shared/                   # Shared types / contracts
+├── sdks/
+│   └── winston-transport/        # @stacksift/winston-transport (npm ingest SDK)
+├── scripts/                      # seed-e2e, test-ingest, ES ILM, uptime-kuma bootstrap
 ├── zhelpers/                     # Sprint plans, user stories, per-card research/plan
-├── .cursorrules                  # Architecture guardrails
+├── .github/workflows/            # CI, docker-build, e2e-real, release-please, zap
+├── .cursorrules                  # Architecture guardrails (.NET)
 ├── CLAUDE.md                     # AI coding assistant guidance
-├── CURRENTSTATE.md               # Authoritative status snapshot
+├── CURRENTSTATE.md               # Pointer to per-package CURRENTSTATE.md files
 └── pnpm-workspace.yaml           # pnpm monorepo config
 ```
 
@@ -111,7 +123,7 @@ StackSift/
 ### Prerequisites
 - Docker & Docker Compose v2.20+ (`required` env-file syntax)
 
-That's it. The full stack — Postgres, Elasticsearch, Redis, RabbitMQ, Keycloak, MinIO, Mailpit, Prometheus, Loki, Grafana, Uptime-Kuma, the .NET API, the dashboard, and the marketing site — runs in one command.
+That's it. The full stack — Postgres, Elasticsearch, Redis, RabbitMQ, Keycloak, MinIO, Mailpit, Prometheus, Loki, Tempo, Grafana, Alertmanager, n8n, Unleash, Uptime-Kuma, the .NET API, the dashboard, and the marketing site — runs in one command.
 
 ### 1. Configure local secrets
 
@@ -209,12 +221,16 @@ See `docs/payments.md` for the full operator runbook (rotating the webhook secre
 | Service | URL |
 |---------|-----|
 | API | http://localhost:5190 |
-| Frontend | http://localhost:3000 |
+| Frontend (dashboard) | http://localhost:3000 |
+| Marketing | http://localhost:3200 |
 | Keycloak | http://localhost:8080 |
+| Mailpit (email UI) | http://localhost:8025 |
 | RabbitMQ UI | http://localhost:15672 |
 | Grafana | http://localhost:3001 |
 | Loki | http://localhost:3100 |
 | Uptime Kuma | http://localhost:3002 |
+| n8n | http://localhost:5678 |
+| Unleash | http://localhost:4242 |
 | Elasticsearch | http://localhost:9200 |
 | Prometheus | http://localhost:9090 |
 | MinIO Console | http://localhost:9001 |
@@ -243,10 +259,10 @@ Course duration: March 23 – June 12, 2026 · 7 milestones · 6 sprints
 | M1: Product Foundation | 10% | Mar 27 | ✅ Complete |
 | M2: Frontend MVP | 15% | Apr 17 | ✅ Complete |
 | M3: Backend MVP | 20% | May 8 | ✅ Complete (tagged `milestone-3`) |
-| M4: Infrastructure & DevOps | 20% | May 22 | 🔄 In Progress |
-| M5: Fullstack Integration | 15% | May 29 | ⏳ Upcoming |
-| M6: Product Analytics | 10% | Jun 5 | ⏳ Upcoming |
-| M7: Finalisation & Demo | 10% | Jun 8–12 | ⏳ Upcoming |
+| M4: Infrastructure & DevOps | 20% | May 22 | ✅ Complete — Helm chart live on `project-07` |
+| M5: Fullstack Integration | 15% | May 29 | ✅ Complete — all TanStack hooks on real backend |
+| M6: Product Analytics | 10% | Jun 5 | ✅ Complete — GA4 + AARRR funnel |
+| M7: Finalisation & Demo | 10% | Jun 8–12 | ✅ Complete |
 
 ### M1: Product Foundation ✅
 *Sprint 1 — Weeks 1–2 (due Mar 27)*
@@ -294,36 +310,39 @@ Course duration: March 23 – June 12, 2026 · 7 milestones · 6 sprints
 - [x] Integration test suite — Testcontainers (Postgres + Keycloak + Redis), Respawn, `KeycloakTestRealmSeeder`
 - [x] AI Log Entry #3 — Sprint 3 + early Sprint 4 documentation
 
-### M4: Infrastructure & DevOps 🔄
+### M4: Infrastructure & DevOps ✅
 *Sprint 5 (M4 track) — Weeks 8–9 (due May 22)*
 
-- [ ] App-image Dockerfiles — multi-stage build for `StackSift.Api` and the Next.js frontend
-- [ ] CI workflow — build + test (backend + frontend), publish images on merge to `develop`
-- [ ] Helm charts / k8s manifests — stateful services, observability, application tier
-- [ ] Terraform — cloud target (Hetzner / DO / etc.), VPC, k8s cluster, secrets
-- [ ] Grafana dashboards — four golden signals + Hangfire queue depth + RabbitMQ consumer lag + ES indexing rate
-- [ ] OpenTelemetry collector + traces backend (Tempo / Jaeger)
-- [ ] Secret management — sealed-secrets / SOPS / external secrets operator
-- [ ] Uptime Kuma probes for `/api/v1/health` and the frontend home
+- [x] App-image Dockerfiles — multi-stage builds for `StackSift.Api`, the dashboard, and the marketing site
+- [x] CI workflow — per-package build + test (backend, frontend, marketing, SDKs, migration-runner), images published via `docker-build.yml`
+- [x] Helm charts / k8s manifests — all tiers + observability deployed to namespace `project-07` (Hetzner)
+- [x] Terraform — Keycloak realm-as-code module (`infrastructure/terraform/keycloak`)
+- [x] Grafana dashboards — 6 dashboards (golden signals, log ingestion, AI-analysis costs, multi-tenant usage, Postgres DBA) + 14 Prometheus alerts
+- [x] OpenTelemetry → Tempo (OTLP traces backend)
+- [x] Secret management — prereq k8s Secrets per gated feature (documented in `docs/secrets.md` + chart README)
+- [x] Uptime Kuma probes for `/api/v1/health` and the frontend home
 
-### M5: Fullstack Integration ⏳
+### M5: Fullstack Integration ✅
 *Sprint 5 (M5 track) — Week 10 (due May 29)*
 
-- [ ] Frontend test suite triage — restore green baseline (last known good: 450/450 end of Sprint 2)
-- [ ] Real `apiClient` wiring — flip the four TanStack Query hooks to hit the backend with Zod boundary validation
-- [ ] SignalR real connection — flip `NEXT_PUBLIC_SIGNALR_MOCK=false`, exercise WebSocket JWT
-- [ ] Keycloak real PKCE flow — flip `NEXT_PUBLIC_AUTH_MOCK=false`
-- [ ] `/incidents/[id]` — the demo-day page (timeline + AI analysis panel + similar past incidents)
-- [ ] `/logs` — filter bar + virtualised table + real-time append
-- [ ] `/projects`, `/projects/[id]`, `/alerts`, `/settings` — list + detail pages
-- [ ] Playwright end-to-end flow — ingest → log appears → alert fires → incident → AI analysis renders
+- [x] Frontend test suite triage — green baseline restored and enforced via `jest.globalSetup.ts`
+- [x] Real `apiClient` wiring — all TanStack Query hooks hit the backend with Zod boundary validation
+- [x] SignalR real connection — typed `AlertHub` + Redis backplane + WebSocket JWT (mock seam retained for offline dev)
+- [x] Keycloak real auth — BFF cookie pattern, ROPC login + PKCE callback (`NEXT_PUBLIC_AUTH_MOCK` for offline dev)
+- [x] `/incidents/[id]` — timeline + AI analysis panel + similar past incidents
+- [x] `/logs` — filter bar + virtualised table + real-time append
+- [x] `/projects`, `/projects/[id]`, `/alerts`, `/settings` — list + detail pages
+- [x] Playwright end-to-end flow — real-stack journey (project → log source → ingest → /logs round-trip) under `REAL_STACK=1`
 
 ---
 
 ## 📄 Documentation
 
+- [Architecture Diagram](docs/architecture.md)
+- [Database Schema (ERD)](docs/database-schema.md)
 - [AI Engineering Log](docs/ai-log.md)
 - [RAG Architecture & System Prompt v3](docs/ai-rag-architecture.md)
+- **Integrate / send logs:** [Ingestion API Reference](docs/integrate/api-reference.md) · [curl recipe](docs/integrate/curl.md) · [SDK versioning policy](docs/integrate/sdk-versioning.md)
 - [SQL Optimisations](docs/sql-optimization.md)
 - [Test Coverage Strategy](docs/test-coverage.md)
 - [Swagger Enrichment Walkthrough](docs/swagger-enrichment.md)

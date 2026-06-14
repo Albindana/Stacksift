@@ -3,6 +3,7 @@
 The single source of truth for log ingestion. SDKs (`StackSift.Serilog.Sink`, `@stacksift/winston-transport`) derive from this document; any change to the request or response shape must update this file in the same PR (enforced by CODEOWNERS on `src/backend/StackSift.Application/Commands/Logs/IngestLogBatchCommand.cs` and `src/backend/StackSift.Application/DTOs/IngestLogEntryDto.cs`).
 
 **Base URL (production):** `https://api.stacksift.com` (TBD — replace at launch)
+**Base URL (current beta):** `https://api.dmdailydeals.com`
 **Base URL (local development):** `http://localhost:5190`
 **Endpoint:** `POST /api/v1/logs/ingest`
 
@@ -15,9 +16,9 @@ One of:
 - `Authorization: Bearer <jwt>` — Keycloak access token. Used by the dashboard.
 - `X-Api-Key: <key>` — log-source API key. Used by SDKs and any direct HTTP integration.
 
-Keys are 32-byte base64url strings prefixed with `ss_`, e.g. `ss_AbCdEf12...` (43 chars after the prefix). Generated when a log source is created or its key is regenerated; revealed exactly once in the dashboard. Treat them as bearer secrets — never log the full key, never commit them to source control. The first 8 chars (`ss_AbCd`) are safe to log for debugging.
+Keys are 24 random bytes, base64url-encoded (no padding), prefixed with `ss_` — `ss_` plus 32 url-safe characters, 35 chars total, e.g. `ss_AbCdEf12...`. Generated when a log source is created or its key is regenerated; only the HMAC-SHA256 hash is stored server-side (the raw key is revealed exactly once in the dashboard and is unrecoverable afterwards). Treat them as bearer secrets — never log the full key, never commit them to source control. The first 8 chars (`ss_` + 5, e.g. `ss_AbCde`) form the lookup prefix and are safe to log for debugging.
 
-If both headers are present, the JWT is preferred.
+The header lookup is case-insensitive, so `X-Api-Key` and `X-API-Key` both work. If both headers are present, the JWT is preferred.
 
 ---
 
@@ -72,16 +73,16 @@ Content-Type: application/json
 | `spanId`      | string                                              | no       |
 | `serviceName` | string                                              | no       |
 | `hostName`    | string                                              | no       |
-| `metadata`    | JSON object, max ~64 KB after serialisation         | no       |
+| `metadata`    | JSON object, ≤ 50 keys, each value ≤ 8 KiB          | no       |
 
-`metadata` is stored verbatim in Elasticsearch. Keep keys and values bounded — values larger than ~64 KB are rejected at the indexing layer.
+`metadata` is stored verbatim in Elasticsearch. Keep keys and values bounded — a batch with more than 50 metadata keys on an entry, or any metadata value longer than 8 KiB, is rejected with `400`. Each `message` is capped at 64 KiB.
 
 ---
 
 ## Limits
 
 - **Batch size:** ≤ 1000 entries.
-- **Body size:** 1 MB after JSON serialisation (Kestrel default).
+- **Body size:** Kestrel caps the request body at 11 MiB; the validator additionally rejects any batch whose combined message payload exceeds 10 MiB (`400`).
 - **Rate limit:** 100 batches per 60 seconds **per API key**. Falls back to per-IP partitioning when the key header is absent.
 - **Entry timestamp drift:** there is no hard rejection on past/future timestamps. Out-of-order ingestion is supported; cursor pagination is timestamp + id stable.
 
@@ -112,9 +113,8 @@ All errors follow RFC 7807 `application/problem+json`:
 
 | Status | When                                                              | SDK behaviour                            |
 |--------|-------------------------------------------------------------------|------------------------------------------|
-| 400    | Validation failure (missing IDs, > 1000 entries, malformed body). | Drop the batch; surface to caller.       |
-| 401    | Missing key, malformed key, or key revoked.                        | Drop the batch; surface to caller.       |
-| 403    | Key valid but log source inactive (soft-deleted or regenerated).  | Drop the batch; surface to caller.       |
+| 400    | Validation failure (missing IDs, > 1000 entries, oversized payload, malformed body). | Drop the batch; surface to caller.       |
+| 401    | Missing key, malformed key, or no **active** log source matches it (revoked, regenerated, or soft-deleted keys fall here). | Drop the batch; surface to caller.       |
 | 404    | `projectId` or `logSourceId` not in the key's organisation.        | Drop the batch; surface to caller.       |
 | 429    | Rate limit exceeded for this key.                                  | Honour `Retry-After`, then retry.        |
 | 5xx    | Transient backend / dependency failure.                            | Retry with exponential backoff (capped). |
@@ -139,10 +139,10 @@ The SDK versioning policy that governs how additions propagate to consumers is i
 
 ## Internal references (for maintainers)
 
-- Controller: `src/backend/StackSift.Api/Controllers/LogEntriesController.cs:62-72`
-- Command + validator: `src/backend/StackSift.Application/Commands/Logs/IngestLogBatchCommand.cs:12-28`
-- Entry DTO: `src/backend/StackSift.Application/DTOs/IngestLogEntryDto.cs:5-14`
+- Controller: `src/backend/StackSift.Api/Controllers/LogEntriesController.cs` (`IngestLogs`, `[HttpPost("ingest")]`)
+- Command + validator: `src/backend/StackSift.Application/Commands/Logs/IngestLogBatchCommand.cs` (`IngestLogBatchCommandValidator`)
+- Entry DTO: `src/backend/StackSift.Application/DTOs/IngestLogEntryDto.cs`
 - Level enum: `src/backend/StackSift.Domain/Enums/LogLevel.cs`
-- API-key middleware: `src/backend/StackSift.Api/Middleware/ApiKeyAuthMiddleware.cs`
-- Rate-limit policy: `src/backend/StackSift.Api/Program.cs:165-177`
+- API-key middleware: `src/backend/StackSift.Api/Middleware/ApiKeyAuthMiddleware.cs` (matches active sources by 8-char prefix, HMAC-verifies)
+- Rate-limit policy: `src/backend/StackSift.Api/Program.cs` (`LogIngest` policy)
 - Async consumer: `src/backend/StackSift.Infrastructure/Messaging/Consumers/LogBatchConsumer.cs`

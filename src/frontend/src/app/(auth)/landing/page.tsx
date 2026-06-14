@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import Link from 'next/link';
 
 export const metadata = {
@@ -8,7 +9,33 @@ export default function LandingPage() {
   return (
     <div className="flex flex-col gap-6 rounded-xl border border-line bg-surface p-8 shadow-xl">
       <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold">Welcome to StackSift</h1>
+        {/* Brand logo — mirrors the app sidebar: icon + theme-aware wordmark.
+            Two wordmarks are rendered; the `dark:` variant shows exactly one
+            (the hidden copy is display:none, so screen readers read "StackSift"
+            once via the visible wordmark's alt). */}
+        <h1 className="flex items-center gap-2">
+          <Image
+            src="/stacksifticon.png"
+            alt=""
+            width={40}
+            height={40}
+            className="h-10 w-auto shrink-0 rounded"
+          />
+          <Image
+            src="/namestacksifticon.png"
+            alt="StackSift"
+            width={120}
+            height={28}
+            className="h-5 w-auto shrink-0 dark:hidden"
+          />
+          <Image
+            src="/namestacksiftwhiteicon.png"
+            alt="StackSift"
+            width={120}
+            height={28}
+            className="hidden h-5 w-auto shrink-0 dark:block"
+          />
+        </h1>
         <p className="text-sm text-muted">
           AI-powered SRE &amp; log-analysis platform.
         </p>

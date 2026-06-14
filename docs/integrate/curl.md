@@ -13,7 +13,8 @@ For the canonical request/response shape, see [api-reference.md](./api-reference
 You need three values from the StackSift dashboard:
 
 - The **ingest URL** — `https://api.stacksift.com/api/v1/logs/ingest`
-  in production, or `http://localhost:5190/api/v1/logs/ingest` in local
+  in production (`https://api.dmdailydeals.com/api/v1/logs/ingest` on the
+  current beta), or `http://localhost:5190/api/v1/logs/ingest` in local
   development.
 - A **log-source API key**, revealed once on the integration page. Starts
   with `ss_`.
