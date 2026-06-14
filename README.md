@@ -39,13 +39,16 @@
 | Database | PostgreSQL 16 + pgvector |
 | Search | Elasticsearch 8.12 |
 | Cache | Redis |
-| Messaging | RabbitMQ (MassTransit 9) |
+| Messaging | RabbitMQ (MassTransit 8) |
 | Real-time | SignalR (Redis backplane) |
 | Background Jobs | Hangfire (PostgreSQL) |
 | Object Storage | MinIO (S3-compatible) |
 | AI | OpenAI (`gpt-4o-mini` + `text-embedding-3-small`) |
+| Payments | Stripe (checkout, customer portal, webhooks) |
+| Feature Flags | Unleash (server SDK; AI-analysis kill-switch) |
+| Abuse Prevention | Cloudflare Turnstile + disposable-email blocklist |
 | Email | MailKit + Polly retry |
-| Logging | Serilog → Loki + OpenTelemetry |
+| Logging | Serilog → Loki + OpenTelemetry → Tempo |
 | Testing | xUnit + Testcontainers (Postgres, Keycloak, Redis) |
 | Auth | Keycloak (OIDC/OAuth2) |
 
@@ -61,6 +64,7 @@
 | Animation | Framer Motion 11 |
 | Real-time | `@microsoft/signalr` 8 |
 | Validation | Zod (forms + API responses) |
+| Analytics | Google Analytics 4 (AARRR funnel) |
 | Testing | Jest + RTL + Playwright |
 | Workspace | pnpm |
 
@@ -82,27 +86,33 @@
 
 ```
 StackSift/
-├── docs/
-│   ├── ai-log.md                 # AI Engineering session log (42+ entries)
-│   ├── ai-rag-architecture.md    # RAG pipeline + system prompt v3
-│   ├── sql-optimization.md       # EXPLAIN ANALYZE deep-dive (BE-16)
-│   ├── swagger-enrichment.md     # BE-20 OpenAPI walkthrough
-│   ├── test-coverage.md          # Testcontainers strategy
-│   ├── loki-setup.md             # Loki query guide
+├── docs/                         # ~24 docs: architecture, ai-rag-architecture, payments,
+│   │                             #   retention, slo, observability-setup, feature-flags, …
+│   ├── ai-log.md                 # AI Engineering session log
+│   ├── integrate/                # Customer integration guides (ingest API, curl, SDK versioning)
+│   ├── security/                 # CSRF, DAST/ZAP, secret-scanning, pentest scope
+│   ├── runbooks/                 # First-deploy, incident-response, observability, backups
+│   ├── adr/                      # Architecture Decision Records
 │   └── milestones/               # Capstone deliverables
 ├── infrastructure/
-│   ├── docker/                   # Docker Compose configs (10 services)
-│   ├── keycloak/                 # Realm export (stacksift-realm.json)
-│   ├── k8s/                      # Helm charts & K8s manifests (M4)
-│   └── terraform/                # Cloud IaC (M4)
+│   ├── docker/                   # Docker Compose stack (~20 services) + hot-reload override
+│   ├── keycloak/                 # Dev realm seed (stacksift-realm.json)
+│   ├── helm/stacksift/           # Helm chart — deployed to namespace project-07
+│   ├── terraform/keycloak/       # Keycloak realm-as-code (production source of truth)
+│   ├── elasticsearch/, pgbackrest/, k8s/
 ├── src/
-│   ├── backend/                  # .NET 10 Clean Architecture solution
-│   ├── frontend/                 # Next.js 16+ App Router
+│   ├── backend/                  # .NET 10 Clean Architecture solution (+ Serilog sink + migrator)
+│   ├── frontend/                 # Next.js 16 App Router dashboard
+│   ├── marketing/                # Next.js 16 marketing site (:3200)
 │   └── shared/                   # Shared types / contracts
+├── sdks/
+│   └── winston-transport/        # @stacksift/winston-transport (npm ingest SDK)
+├── scripts/                      # seed-e2e, test-ingest, ES ILM, uptime-kuma bootstrap
 ├── zhelpers/                     # Sprint plans, user stories, per-card research/plan
-├── .cursorrules                  # Architecture guardrails
+├── .github/workflows/            # CI, docker-build, e2e-real, release-please, zap
+├── .cursorrules                  # Architecture guardrails (.NET)
 ├── CLAUDE.md                     # AI coding assistant guidance
-├── CURRENTSTATE.md               # Authoritative status snapshot
+├── CURRENTSTATE.md               # Pointer to per-package CURRENTSTATE.md files
 └── pnpm-workspace.yaml           # pnpm monorepo config
 ```
 
@@ -113,7 +123,7 @@ StackSift/
 ### Prerequisites
 - Docker & Docker Compose v2.20+ (`required` env-file syntax)
 
-That's it. The full stack — Postgres, Elasticsearch, Redis, RabbitMQ, Keycloak, MinIO, Mailpit, Prometheus, Loki, Grafana, Uptime-Kuma, the .NET API, the dashboard, and the marketing site — runs in one command.
+That's it. The full stack — Postgres, Elasticsearch, Redis, RabbitMQ, Keycloak, MinIO, Mailpit, Prometheus, Loki, Tempo, Grafana, Alertmanager, n8n, Unleash, Uptime-Kuma, the .NET API, the dashboard, and the marketing site — runs in one command.
 
 ### 1. Configure local secrets
 
@@ -211,12 +221,16 @@ See `docs/payments.md` for the full operator runbook (rotating the webhook secre
 | Service | URL |
 |---------|-----|
 | API | http://localhost:5190 |
-| Frontend | http://localhost:3000 |
+| Frontend (dashboard) | http://localhost:3000 |
+| Marketing | http://localhost:3200 |
 | Keycloak | http://localhost:8080 |
+| Mailpit (email UI) | http://localhost:8025 |
 | RabbitMQ UI | http://localhost:15672 |
 | Grafana | http://localhost:3001 |
 | Loki | http://localhost:3100 |
 | Uptime Kuma | http://localhost:3002 |
+| n8n | http://localhost:5678 |
+| Unleash | http://localhost:4242 |
 | Elasticsearch | http://localhost:9200 |
 | Prometheus | http://localhost:9090 |
 | MinIO Console | http://localhost:9001 |
