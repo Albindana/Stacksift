@@ -53,7 +53,8 @@ on:
 
   # Manual builds for a specific public domain (frontend + marketing bake
   # NEXT_PUBLIC_* at build time). Used to produce the dmdailydeals.com beta
-  # images: domain=dmdailydeals.com, extra_tag=dmdailydeals, invite_only=true.
+  # images: domain=dmdailydeals.com, extra_tag=dmdailydeals (invite_only defaults
+  # to false now that signup is open; pass invite_only=true to re-close).
   workflow_dispatch:
     inputs:
       domain:
@@ -341,7 +342,7 @@ jobs:
               echo 'NEXT_PUBLIC_SIGNALR_HUB_URL=https://api.dmdailydeals.com/hubs/stacksift'
               echo 'NEXT_PUBLIC_AUTH_MOCK=false'
               echo 'NEXT_PUBLIC_SIGNALR_MOCK=false'
-              echo 'NEXT_PUBLIC_REGISTRATION_INVITE_ONLY=true'
+              echo 'NEXT_PUBLIC_REGISTRATION_INVITE_ONLY=false'
               echo 'NEXT_PUBLIC_GA_MEASUREMENT_ID=${{ vars.NEXT_PUBLIC_GA_MEASUREMENT_ID || 'G-7LVK4X9J96' }}'
               echo 'EOF'
             } >> "$GITHUB_OUTPUT"

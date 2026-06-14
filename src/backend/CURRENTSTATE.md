@@ -1,6 +1,6 @@
 # Backend — Current State
 
-> **Last updated:** 2026-06-10 (FS-6 feature flags — Unleash; see "Work since Sprint 3"). Prior: 2026-06-09 (in-cluster observability — Loki/Grafana/Alertmanager/n8n + all 14 alerts + Serilog→Loki wiring ported to the Helm chart; see §Deployment. Plus 2026-06-06 AI-feature bug-fix series below.)
+> **Last updated:** 2026-06-14 (Open signup — flipped beta off invite-only: Helm `Registration__InviteOnly: "false"` + docker-build `build-beta` bakes `NEXT_PUBLIC_REGISTRATION_INVITE_ONLY=false`. The `Registration:InviteOnly` backend gate in `RegisterUserCommandHandler` is unchanged; only its production value flipped). Prior: 2026-06-10 (FS-6 feature flags — Unleash; see "Work since Sprint 3"). Prior: 2026-06-09 (in-cluster observability — Loki/Grafana/Alertmanager/n8n + all 14 alerts + Serilog→Loki wiring ported to the Helm chart; see §Deployment. Plus 2026-06-06 AI-feature bug-fix series below.)
 > **Sprint:** Post-Sprint-3 — feature surface complete; Plans 04–08 (payments, data-lifecycle/GDPR, observability, realm-as-code, security) landed; now Docker-native.
 > **Health:** All four layers fully built out. Backend test suite on real Testcontainers (Postgres pgvector:pg16 + Keycloak) — last reported 209/209 green at CORE-FUNC, since extended by billing/GDPR/security work. The whole stack now boots and works **composed in Docker Compose** (see §"Docker integration" below).
 
