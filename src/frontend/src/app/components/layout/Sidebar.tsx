@@ -11,6 +11,7 @@ import {
   Bell,
   Server,
   Settings,
+  BarChart2,
   ChevronsLeft,
   ChevronsRight,
 } from 'lucide-react';
@@ -28,6 +29,7 @@ const NAV_ITEMS = [
   { href: '/incidents', label: 'Incidents', icon: Flame },
   { href: '/alerts', label: 'Alert Rules', icon: Bell },
   { href: '/projects', label: 'Projects', icon: Server },
+  { href: '/stakeholder', label: 'Executive View', icon: BarChart2 },
   { href: '/settings', label: 'Settings', icon: Settings },
 ] as const;
 
