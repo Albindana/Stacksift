@@ -48,7 +48,7 @@ After `1.0.0`, the SemVer rules are strict.
 | SDK                              | Latest      | Status   | Bugfix support until           |
 |----------------------------------|-------------|----------|--------------------------------|
 | `StackSift.Serilog.Sink`         | `0.1.0`     | Current  | superseded by `1.0.0` once ready |
-| `@stacksift/winston-transport`   | `0.1.0`     | Current  | superseded by `1.0.0` once ready |
+| `@stacksift/winston-transport`   | `0.1.1`     | Current  | superseded by `1.0.0` once ready |
 
 This table is updated at every release.
 

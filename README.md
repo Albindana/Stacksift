@@ -67,11 +67,13 @@
 ### Infrastructure
 | Tool | Purpose |
 |------|---------|
-| Docker Compose | Local development orchestration (10 services) |
-| Kubernetes + Helm | Production deployment _(planned — M4)_ |
-| Terraform | Cloud IaC _(planned — M4)_ |
-| Prometheus + Grafana | Metrics & dashboards |
-| Loki | Log aggregation (Serilog HTTP sink) |
+| Docker Compose | Local development orchestration (~20 services) |
+| Kubernetes + Helm | Production deployment — live on namespace `project-07` (beta) |
+| Terraform | Keycloak realm-as-code (`infrastructure/terraform/keycloak`) |
+| Prometheus + Grafana | Metrics & dashboards (6 dashboards, 14 alert rules) |
+| Loki + Tempo | Log aggregation (Serilog HTTP sink) + distributed tracing (OTLP) |
+| n8n | Alert-triage automation (Alertmanager → OpenAI → Slack) |
+| Unleash | Feature flags (AI-analysis kill-switch) |
 | Uptime Kuma | Uptime monitoring |
 
 ---
@@ -243,10 +245,10 @@ Course duration: March 23 – June 12, 2026 · 7 milestones · 6 sprints
 | M1: Product Foundation | 10% | Mar 27 | ✅ Complete |
 | M2: Frontend MVP | 15% | Apr 17 | ✅ Complete |
 | M3: Backend MVP | 20% | May 8 | ✅ Complete (tagged `milestone-3`) |
-| M4: Infrastructure & DevOps | 20% | May 22 | 🔄 In Progress |
-| M5: Fullstack Integration | 15% | May 29 | ⏳ Upcoming |
-| M6: Product Analytics | 10% | Jun 5 | ⏳ Upcoming |
-| M7: Finalisation & Demo | 10% | Jun 8–12 | ⏳ Upcoming |
+| M4: Infrastructure & DevOps | 20% | May 22 | ✅ Complete — Helm chart live on `project-07` |
+| M5: Fullstack Integration | 15% | May 29 | ✅ Complete — all TanStack hooks on real backend |
+| M6: Product Analytics | 10% | Jun 5 | ✅ Complete — GA4 + AARRR funnel |
+| M7: Finalisation & Demo | 10% | Jun 8–12 | ✅ Complete |
 
 ### M1: Product Foundation ✅
 *Sprint 1 — Weeks 1–2 (due Mar 27)*
@@ -294,29 +296,29 @@ Course duration: March 23 – June 12, 2026 · 7 milestones · 6 sprints
 - [x] Integration test suite — Testcontainers (Postgres + Keycloak + Redis), Respawn, `KeycloakTestRealmSeeder`
 - [x] AI Log Entry #3 — Sprint 3 + early Sprint 4 documentation
 
-### M4: Infrastructure & DevOps 🔄
+### M4: Infrastructure & DevOps ✅
 *Sprint 5 (M4 track) — Weeks 8–9 (due May 22)*
 
-- [ ] App-image Dockerfiles — multi-stage build for `StackSift.Api` and the Next.js frontend
-- [ ] CI workflow — build + test (backend + frontend), publish images on merge to `develop`
-- [ ] Helm charts / k8s manifests — stateful services, observability, application tier
-- [ ] Terraform — cloud target (Hetzner / DO / etc.), VPC, k8s cluster, secrets
-- [ ] Grafana dashboards — four golden signals + Hangfire queue depth + RabbitMQ consumer lag + ES indexing rate
-- [ ] OpenTelemetry collector + traces backend (Tempo / Jaeger)
-- [ ] Secret management — sealed-secrets / SOPS / external secrets operator
-- [ ] Uptime Kuma probes for `/api/v1/health` and the frontend home
+- [x] App-image Dockerfiles — multi-stage builds for `StackSift.Api`, the dashboard, and the marketing site
+- [x] CI workflow — per-package build + test (backend, frontend, marketing, SDKs, migration-runner), images published via `docker-build.yml`
+- [x] Helm charts / k8s manifests — all tiers + observability deployed to namespace `project-07` (Hetzner)
+- [x] Terraform — Keycloak realm-as-code module (`infrastructure/terraform/keycloak`)
+- [x] Grafana dashboards — 6 dashboards (golden signals, log ingestion, AI-analysis costs, multi-tenant usage, Postgres DBA) + 14 Prometheus alerts
+- [x] OpenTelemetry → Tempo (OTLP traces backend)
+- [x] Secret management — prereq k8s Secrets per gated feature (documented in `docs/secrets.md` + chart README)
+- [x] Uptime Kuma probes for `/api/v1/health` and the frontend home
 
-### M5: Fullstack Integration ⏳
+### M5: Fullstack Integration ✅
 *Sprint 5 (M5 track) — Week 10 (due May 29)*
 
-- [ ] Frontend test suite triage — restore green baseline (last known good: 450/450 end of Sprint 2)
-- [ ] Real `apiClient` wiring — flip the four TanStack Query hooks to hit the backend with Zod boundary validation
-- [ ] SignalR real connection — flip `NEXT_PUBLIC_SIGNALR_MOCK=false`, exercise WebSocket JWT
-- [ ] Keycloak real PKCE flow — flip `NEXT_PUBLIC_AUTH_MOCK=false`
-- [ ] `/incidents/[id]` — the demo-day page (timeline + AI analysis panel + similar past incidents)
-- [ ] `/logs` — filter bar + virtualised table + real-time append
-- [ ] `/projects`, `/projects/[id]`, `/alerts`, `/settings` — list + detail pages
-- [ ] Playwright end-to-end flow — ingest → log appears → alert fires → incident → AI analysis renders
+- [x] Frontend test suite triage — green baseline restored and enforced via `jest.globalSetup.ts`
+- [x] Real `apiClient` wiring — all TanStack Query hooks hit the backend with Zod boundary validation
+- [x] SignalR real connection — typed `AlertHub` + Redis backplane + WebSocket JWT (mock seam retained for offline dev)
+- [x] Keycloak real auth — BFF cookie pattern, ROPC login + PKCE callback (`NEXT_PUBLIC_AUTH_MOCK` for offline dev)
+- [x] `/incidents/[id]` — timeline + AI analysis panel + similar past incidents
+- [x] `/logs` — filter bar + virtualised table + real-time append
+- [x] `/projects`, `/projects/[id]`, `/alerts`, `/settings` — list + detail pages
+- [x] Playwright end-to-end flow — real-stack journey (project → log source → ingest → /logs round-trip) under `REAL_STACK=1`
 
 ---
 
@@ -326,6 +328,7 @@ Course duration: March 23 – June 12, 2026 · 7 milestones · 6 sprints
 - [Database Schema (ERD)](docs/database-schema.md)
 - [AI Engineering Log](docs/ai-log.md)
 - [RAG Architecture & System Prompt v3](docs/ai-rag-architecture.md)
+- **Integrate / send logs:** [Ingestion API Reference](docs/integrate/api-reference.md) · [curl recipe](docs/integrate/curl.md) · [SDK versioning policy](docs/integrate/sdk-versioning.md)
 - [SQL Optimisations](docs/sql-optimization.md)
 - [Test Coverage Strategy](docs/test-coverage.md)
 - [Swagger Enrichment Walkthrough](docs/swagger-enrichment.md)
