@@ -55,7 +55,7 @@
 | `/alerts/new` | `(dashboard)/alerts/new/page.tsx` | ✅ Alert Rule Builder wizard (mock POST) |
 | `/projects` | `(dashboard)/projects/page.tsx` | ✅ Full — project cards, empty/skeleton/error states (FS-04) |
 | `/projects/new` | `(dashboard)/projects/new/page.tsx` | ✅ New Project wizard — now POSTs to real backend (FS-04) |
-| `/projects/[id]` | `(dashboard)/projects/[id]/page.tsx` | ✅ Full — project header, log sources list (FS-04) |
+| `/projects/[id]` | `(dashboard)/projects/[id]/page.tsx` | ✅ Full — project header, log sources list (FS-04). Add-log-source dialog: only "Application" type is selectable; server/database/network/custom are shown disabled with a "Soon" pill (roadmap preview). `LogSourceType` enum/schema/icon-map intentionally kept broad so existing/seeded non-application sources still render. |
 | `/settings/organization` | `(dashboard)/settings/organization/page.tsx` | ✅ (2026-05-31) — org name/logo edit (`useUpdateOrganization`) |
 | `/settings/billing` | `(dashboard)/settings/billing/page.tsx` | ✅ (2026-05-31) — `BillingPanel`: plan, upgrade (`useUpgradePlan`), Stripe portal link |
 | `/settings/api` | `(dashboard)/settings/api/page.tsx` | ✅ (2026-05-31) — org-wide `LogSourcesTable` + key management |
