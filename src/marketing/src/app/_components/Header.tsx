@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { ctaUrl } from "../_lib/cta";
 
@@ -19,8 +20,25 @@ export default function Header() {
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-canvas/95 backdrop-blur">
       <div className="container-page flex min-h-16 items-center justify-between gap-4">
-        <Link href="/" className="text-base font-bold tracking-tight">
-          StackSift
+        <Link
+          href="/"
+          aria-label="StackSift home"
+          className="flex items-center gap-2"
+        >
+          <Image
+            src="/stacksifticon.png"
+            alt=""
+            width={40}
+            height={40}
+            className="h-9 w-auto shrink-0 rounded"
+          />
+          <Image
+            src="/namestacksifticon.png"
+            alt="StackSift"
+            width={120}
+            height={28}
+            className="h-5 w-auto shrink-0"
+          />
         </Link>
 
         <nav aria-label="Primary" className="hidden items-center gap-6 md:flex">

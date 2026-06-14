@@ -118,65 +118,68 @@ export default function SettingsProjectsPage() {
               No projects have been created yet.
             </div>
           ) : (
-            <div className="overflow-hidden rounded-lg border border-line">
-              <table className="w-full text-sm">
-                <thead className="bg-elevated text-left text-xs uppercase tracking-wide text-muted">
-                  <tr>
-                    <th className="px-4 py-3 font-medium">Project</th>
-                    <th className="px-4 py-3 font-medium">Usage</th>
-                    <th className="px-4 py-3 font-medium">Updated</th>
-                    <th className="px-4 py-3 font-medium text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-line">
-                  {projectList.map((project) => (
-                    <tr key={project.id}>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className="h-3 w-3 rounded-full"
-                            style={{ backgroundColor: project.color }}
-                          />
-                          <div>
-                            <div className="font-medium text-primary">{project.name}</div>
-                            <div className="text-xs text-muted">{project.description ?? 'No description'}</div>
-                            {activeProjectId === project.id ? (
-                              <div className="mt-1 text-xs font-medium text-blue-600">Active project</div>
-                            ) : null}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-muted">
-                        {project.logSourceCount} sources · {project.activeIncidentCount} active incidents
-                      </td>
-                      <td className="px-4 py-3 text-muted">
-                        {new Date(project.updatedAt).toLocaleDateString()}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="inline-flex gap-2">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setEditing(toEditState(project))}
-                          >
-                            Edit
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => handleDelete(project)}
-                            loading={deleteProject.isPending && deleteProject.variables === project.id}
-                          >
-                            Delete
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            // Responsive list (not a <table>): cards below `sm`, aligned columns
+            // at `sm+`. Mirrors the members list pattern.
+            <div className="flex flex-col gap-3 sm:gap-0 sm:overflow-hidden sm:rounded-lg sm:border sm:border-line">
+              <div
+                aria-hidden="true"
+                className="hidden bg-elevated px-4 py-3 text-xs uppercase tracking-wide text-muted sm:grid sm:grid-cols-[1fr_auto_auto_auto] sm:gap-4"
+              >
+                <span className="font-medium">Project</span>
+                <span className="font-medium">Usage</span>
+                <span className="font-medium">Updated</span>
+                <span className="font-medium text-right">Actions</span>
+              </div>
+
+              <ul className="flex flex-col gap-3 sm:gap-0 sm:divide-y sm:divide-line">
+                {projectList.map((project) => (
+                  <li
+                    key={project.id}
+                    className="flex flex-col gap-3 rounded-lg border border-line bg-surface p-4 text-sm sm:grid sm:grid-cols-[1fr_auto_auto_auto] sm:items-center sm:gap-4 sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0 sm:px-4 sm:py-3"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="h-3 w-3 shrink-0 rounded-full"
+                        style={{ backgroundColor: project.color }}
+                      />
+                      <div className="min-w-0">
+                        <div className="font-medium text-primary">{project.name}</div>
+                        <div className="text-xs text-muted">{project.description ?? 'No description'}</div>
+                        {activeProjectId === project.id ? (
+                          <div className="mt-1 text-xs font-medium text-blue-600">Active project</div>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className="text-muted">
+                      {project.logSourceCount} sources · {project.activeIncidentCount} active incidents
+                    </div>
+                    <div className="text-muted">
+                      {new Date(project.updatedAt).toLocaleDateString()}
+                    </div>
+                    <div className="sm:justify-self-end sm:text-right">
+                      <div className="inline-flex gap-2">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setEditing(toEditState(project))}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => handleDelete(project)}
+                          loading={deleteProject.isPending && deleteProject.variables === project.id}
+                        >
+                          Delete
+                        </Button>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
         </CardBody>
