@@ -1,6 +1,6 @@
 # Frontend — Current State
 
-> **Last updated:** 2026-06-14 (Mobile overflow fixes — members/projects tables + notification panel)
+> **Last updated:** 2026-06-14 (Removed the "Continue with Google" button from `/login` — StackSift email/password is the only auth surface. The underlying GET-redirect (`sso-redirect.ts`) + `/api/auth/callback` + `/callback` page are kept: still the mock-mode Alice auto-login path. Funnel-redirect coverage in `login-plan-redirect.test.tsx` re-pointed from the (gone) SSO link href to the POST-submit path.) Prior: Mobile overflow fixes — members/projects tables + notification panel.
 > **Sprint:** Post-Sprint-5 — billing, log-source UX, settings, and GDPR account screens landed; now Docker-native.
 > **Health:** Tests green (87+ suites at CORE-FUNC, since extended by billing/log-source/settings work). Production build green; lint clean (2 pre-existing TanStack Table warnings). The dashboard now runs **composed in Docker** behind the BFF (see the Docker-integration note under Environment Variables).
 >
@@ -39,7 +39,7 @@
 | Route | File | State |
 |---|---|---|
 | `/landing` | `(auth)/landing/page.tsx` | ✅ NUF-3 — Welcome page with Register + Sign-in CTAs. Default destination for unauthenticated users (`AuthGuard` redirects here). |
-| `/login` | `(auth)/login/page.tsx` | ✅ NUF-3 — In-app ROPC form. POSTs `{email, password}` to `/api/auth/login`; preserves the `?plan=...&from=...` marketing-funnel logic for the post-login redirect. Secondary "Continue with Google" → legacy GET redirect. |
+| `/login` | `(auth)/login/page.tsx` | ✅ NUF-3 — In-app ROPC form. POSTs `{email, password}` to `/api/auth/login`; preserves the `?plan=...&from=...` marketing-funnel logic for the post-login redirect (via the POST-submit `resolveNext`). The "Continue with Google" SSO button was removed — email/password is the only auth surface. |
 | `/login/forgot` | `(auth)/login/forgot/page.tsx` | ✅ NUF-3 — Coming-soon stub so the "Forgot password?" link doesn't 404. |
 | `/register` | `(auth)/register/page.tsx` | ✅ NUF-3 — RHF + Zod form (display name, email, 12+ char password, owner/viewer radio). POSTs `/api/auth/register` then auto-signs in; routes to `/`, `/onboarding`, or `/waiting` based on the **response** (not the form value) so invitation auto-attach wins. |
 | `/waiting` | `(auth)/waiting/page.tsx` | ✅ CORE-FUNC — polls `POST /api/auth/refresh` every 30 s (force-rotates the session cookie so the stale access token is replaced before `/api/auth/me` decodes claims); then `invalidateBearerCache()` + `qc.invalidateQueries(['auth','me'])`; "Check now" triggers the same flow immediately with a "Checking…" disabled state while in flight; transitions to `/` as soon as `user.organizationId` becomes non-null. |
