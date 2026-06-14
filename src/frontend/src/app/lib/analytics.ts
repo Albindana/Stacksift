@@ -34,6 +34,8 @@ export const AnalyticsEvent = {
   /** Revenue */
   CheckoutStarted: 'checkout_started',
   PlanUpgraded: 'plan_upgraded',
+  /** A/B testing — tracks which variant a user saw, for experiment analysis */
+  AbVariantViewed: 'ab_variant_viewed',
 } as const;
 
 export type AnalyticsEventName =

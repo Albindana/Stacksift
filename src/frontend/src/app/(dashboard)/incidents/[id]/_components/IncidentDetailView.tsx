@@ -1,10 +1,13 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useIncident, useIncidentAlerts } from '@/app/hooks/queries/use-incidents';
 import { useAiAnalysis } from '@/app/hooks/queries/use-ai-analysis';
 import { useSimilarIncidents } from '@/app/hooks/queries/use-similar-incidents';
 import { useUpdateIncidentStatus } from '@/app/hooks/mutations/use-update-incident-status';
 import { useTriggerAiAnalysis } from '@/app/hooks/mutations/use-trigger-ai-analysis';
+import { useFeatureFlag } from '@/app/hooks/queries/use-features';
+import { trackEvent, AnalyticsEvent } from '@/app/lib/analytics';
 import { Skeleton } from '@/app/components/ui/Skeleton';
 import { IncidentHeader } from './IncidentHeader';
 import { AlertsTimeline } from './AlertsTimeline';
@@ -25,6 +28,21 @@ export function IncidentDetailView({ id }: IncidentDetailViewProps) {
 
   const analysisId = incident?.aiAnalysisId ?? triggerAnalysis.data?.id ?? null;
   const { data: aiAnalysis } = useAiAnalysis(analysisId);
+
+  // M6.4 A/B test: "ab-ai-prominent" flag → treatment shows AI panel above timeline.
+  // Control (flag off): AI panel in sidebar (original layout).
+  // Treatment (flag on): AI panel surfaced as first item in the main column.
+  const aiProminent = useFeatureFlag('ab-ai-prominent');
+
+  useEffect(() => {
+    if (incidentLoading) return;
+    trackEvent(AnalyticsEvent.AbVariantViewed, {
+      experiment: 'ai-analysis-placement',
+      variant: aiProminent ? 'treatment' : 'control',
+      incident_id: id,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [incidentLoading]);
 
   if (incidentLoading) {
     return (
@@ -51,6 +69,15 @@ export function IncidentDetailView({ id }: IncidentDetailViewProps) {
     );
   }
 
+  const aiPanel = (
+    <AiAnalysisPanel
+      analysisId={analysisId}
+      aiAnalysis={aiAnalysis}
+      isTriggeringAnalysis={triggerAnalysis.isPending}
+      onTrigger={() => triggerAnalysis.mutate({ incidentId: id })}
+    />
+  );
+
   return (
     <div className="flex flex-col gap-6">
       <IncidentHeader
@@ -59,20 +86,22 @@ export function IncidentDetailView({ id }: IncidentDetailViewProps) {
         isUpdating={updateStatus.isPending}
       />
 
+      {/* Treatment (ab-ai-prominent): AI panel surfaced above the timeline */}
+      {aiProminent && (
+        <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-1">
+          {aiPanel}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Left column: alerts timeline */}
         <div className="lg:col-span-2 flex flex-col gap-6">
           <AlertsTimeline alerts={alerts} isLoading={alertsLoading} />
         </div>
 
-        {/* Right column: AI analysis + similar incidents */}
+        {/* Right column: similar incidents + AI panel (control only) */}
         <div className="flex flex-col gap-6">
-          <AiAnalysisPanel
-            analysisId={analysisId}
-            aiAnalysis={aiAnalysis}
-            isTriggeringAnalysis={triggerAnalysis.isPending}
-            onTrigger={() => triggerAnalysis.mutate({ incidentId: id })}
-          />
+          {!aiProminent && aiPanel}
           <SimilarIncidents items={similar} isLoading={similarLoading} />
         </div>
       </div>
