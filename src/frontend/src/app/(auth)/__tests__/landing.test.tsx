@@ -3,10 +3,10 @@ import { render, screen } from '@testing-library/react';
 import LandingPage from '../landing/page';
 
 describe('LandingPage', () => {
-  it('renders the welcome heading', () => {
+  it('renders the StackSift logo as the heading', () => {
     render(<LandingPage />);
     expect(
-      screen.getByRole('heading', { name: /welcome to stacksift/i }),
+      screen.getByRole('heading', { name: /stacksift/i }),
     ).toBeInTheDocument();
   });
 
