@@ -10,15 +10,15 @@
   <ItemGroup>
     <!-- Core test SDK -->
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.2" />
     <PackageReference Include="xunit" Version="2.9.3" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
 
     <!-- Mocking -->
-    <PackageReference Include="Moq" Version="4.20.72" />
+    <PackageReference Include="Moq" Version="4.21.0" />
 
     <!-- Email (MailKit still referenced by some unit tests) -->
-    <PackageReference Include="MailKit" Version="4.16.0" />
+    <PackageReference Include="MailKit" Version="4.18.2" />
 
     <!-- Hangfire (for job unit tests) -->
     <PackageReference Include="Hangfire.Core" Version="1.8.*" />
@@ -26,7 +26,7 @@
     <!-- Integration test infra. Pinned (was 10.0.*) for the same reason as the
          MigrationRunner Hosting pin — the 10.0.9 servicing band is inconsistent
          on nuget.org; 10.0.8 is the last fully-published release. -->
-    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.8" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.15" />
     <PackageReference Include="Testcontainers.PostgreSql" Version="3.*" />
     <PackageReference Include="Testcontainers.Keycloak" Version="3.*" />
     <PackageReference Include="Testcontainers.Redis" Version="3.*" />
